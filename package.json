@@ -1,12 +1,17 @@
 {
   "name": "Ghost",
   "version": "0.0.1",
-  "description": "",
+  "description": "General purpose Discord bot. A bit bratty (on purpose). Based on Ghost from the visual novel 9-nine-.",
+  "type": "module",
   "main": "src/index.js",
   "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/index.js",
     "dev": "node --watch src/index.js"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "discord.js": "^14.27.0",
     "dotenv": "^17.4.2"

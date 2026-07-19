@@ -1,40 +1,41 @@
-require('dotenv').config();
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-
-// Create the Discord client with the intents your bot needs
+import 'dotenv/config';
+import { Client, GatewayIntentBits, Collection } from 'discord.js';
+import { readdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+ 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+ 
 const client = new Client({
   intents: [
-    GatewayIntentBits.Guilds,           // Access to servers (required)
-    GatewayIntentBits.GuildMessages,    // Access to messages
-    GatewayIntentBits.MessageContent,   // Read message content (requires approval for 100+ servers)
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
   ],
 });
-
-// Attach a commands Collection to the client so events can access them
+ 
 client.commands = new Collection();
-
+ 
 // ── Load Commands ──────────────────────────────────────────────────────────────
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
-
+const commandsPath = join(__dirname, 'commands');
+const commandFiles = readdirSync(commandsPath).filter(f => f.endsWith('.js'));
+ 
 for (const file of commandFiles) {
-  const command = require(path.join(commandsPath, file));
-  if ('data' in command && 'execute' in command) {
-    client.commands.set(command.data.name, command);
-    console.log(`✅ Loaded command: /${command.data.name}`);
+  const command = await import(join(commandsPath, file));
+  if ('data' in command.default && 'execute' in command.default) {
+    client.commands.set(command.default.data.name, command.default);
+    console.log(`✅ Loaded command: /${command.default.data.name}`);
   } else {
     console.warn(`⚠️  Skipping ${file} — missing "data" or "execute" export`);
   }
 }
-
+ 
 // ── Load Events ────────────────────────────────────────────────────────────────
-const eventsPath = path.join(__dirname, 'events');
-const eventFiles = fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'));
-
+const eventsPath = join(__dirname, 'events');
+const eventFiles = readdirSync(eventsPath).filter(f => f.endsWith('.js'));
+ 
 for (const file of eventFiles) {
-  const event = require(path.join(eventsPath, file));
+  const event = (await import(join(eventsPath, file))).default;
   if (event.once) {
     client.once(event.name, (...args) => event.execute(...args));
   } else {
@@ -42,6 +43,6 @@ for (const file of eventFiles) {
   }
   console.log(`✅ Loaded event: ${event.name}`);
 }
-
+ 
 // ── Login ──────────────────────────────────────────────────────────────────────
 client.login(process.env.DISCORD_TOKEN);
