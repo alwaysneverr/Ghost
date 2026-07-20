@@ -27,7 +27,7 @@ export default {
     ),
  
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
  
     const target = interaction.options.getUser('user');
     const message = interaction.options.getString('message');
