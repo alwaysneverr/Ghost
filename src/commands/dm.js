@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, InteractionContextType, ApplicationIntegrationType, MessageFlags, EmbedBuilder,
-  ButtonBuilder, ButtonStyle, ActionRowBuilder, } from 'discord.js';
+  ButtonBuilder, ButtonStyle, ActionRowBuilder, RESTJSONErrorCodes } from 'discord.js';
  
 export default {
   data: new SlashCommandBuilder()
@@ -76,7 +76,31 @@ export default {
       await target.send({ embeds: [embed], components });
       await interaction.editReply(`✅ DM sent to ${target.username}`);
     } catch (error) {
-      await interaction.editReply(`❌ Could not send DM to ${target.username} — they may have DMs disabled.`);
+      const reason = getDMFailureReason(error, target);
+      await interaction.editReply(`❌ Could not send DM to ${target.username} — ${reason}`);
     }
   },
 };
+
+function getDMFailureReason(error, target) {
+  // Discord API error codes
+  switch (error.code) {
+    case RESTJSONErrorCodes.CannotSendMessagesToThisUser:
+      return 'they have DMs disabled or are not accepting messages from non-friends.';
+    case RESTJSONErrorCodes.UnknownUser:
+      return 'that user does not exist.';
+    case RESTJSONErrorCodes.UnknownChannel:
+      return 'the DM channel could not be opened.';
+    case RESTJSONErrorCodes.MissingPermissions:
+      return 'the bot is missing permissions to send DMs.';
+    case RESTJSONErrorCodes.RequestEntityTooLarge:
+      return 'the message or image is too large to send.';
+    case RESTJSONErrorCodes.InvalidFormBody:
+      return 'the image URL is invalid or could not be loaded.';
+    default:
+      // Network or unknown errors
+      if (error.status === 429) return 'the bot is being rate limited, try again in a moment.';
+      if (error.status >= 500) return 'Discord is experiencing issues, try again later.';
+      return `an unexpected error occurred (code: ${error.code ?? error.status ?? 'unknown'}).`;
+  }
+}
