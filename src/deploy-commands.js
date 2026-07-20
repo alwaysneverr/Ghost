@@ -1,19 +1,8 @@
-/**
- * deploy-commands.js
- *
- * Run this script once whenever you ADD or CHANGE slash commands.
- * It registers them with Discord's API so they appear in the client.
- *
- * Usage:
- *   node src/deploy-commands.js           → global (takes ~1 hour to propagate)
- *   GUILD_ID=xxx node src/deploy-commands.js  → guild-only (instant, great for dev)
- */
-
 import 'dotenv/config';
 import { REST, Routes } from 'discord.js';
 import { readdirSync } from 'fs';
 import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
  
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID } = process.env;
@@ -28,7 +17,7 @@ const commandsPath = join(__dirname, 'commands');
 const commandFiles = readdirSync(commandsPath).filter(f => f.endsWith('.js'));
  
 for (const file of commandFiles) {
-  const command = (await import(join(commandsPath, file))).default;
+  const command = (await import(pathToFileURL(join(commandsPath, file)).href)).default;
   if ('data' in command) {
     commands.push(command.data.toJSON());
     console.log(`📝 Queued: /${command.data.name}`);
