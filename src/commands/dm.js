@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, InteractionContextType, ApplicationIntegrationType } from 'discord.js';
+import { SlashCommandBuilder, InteractionContextType, ApplicationIntegrationType, MessageFlags } from 'discord.js';
  
 export default {
   data: new SlashCommandBuilder()
