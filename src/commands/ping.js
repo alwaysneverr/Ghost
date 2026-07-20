@@ -17,11 +17,11 @@ export default {
   async execute(interaction) {
     await interaction.deferReply();
  
-    const latency = Date.now() - interaction.createdTimestamp;
+    const latency = interaction.createdTimestamp - Date.now();
     const apiLatency = Math.round(interaction.client.ws.ping);
  
     await interaction.editReply(
-      `🏓 Pong!\n> Round-trip: **${latency}ms** | API: **${apiLatency}ms**`
+      `OOOORAAAH!! *ping* ⚾\n> Round-trip: **${latency}ms** | API: **${apiLatency}ms**`
     );
   },
 };
