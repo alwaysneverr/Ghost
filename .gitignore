@@ -2,3 +2,16 @@
 .env
 node_modules/
 package-lock.json
+
+# ESLint cache file
+.eslintcache
+
+# VS Code Config Files
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+npm-debug.log*
