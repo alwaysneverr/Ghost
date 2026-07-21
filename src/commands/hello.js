@@ -38,7 +38,6 @@ export default {
     const userOption = interaction.options.getUser('user');
     const targetOption = interaction.options.getString('target');
 
-    // Resolve the target: string choice takes priority in DM context
     let target;
     if (targetOption === 'bot') {
       target = botUser;
@@ -51,11 +50,21 @@ export default {
     const isSelf = target.id === interaction.user.id;
     const isBot = target.id === botUser.id;
 
+    const randomGreetings = [
+      `Oi, Captain ${interaction.user} told me to say hello to you, ${target}. I don't know why he can't say it himself though. Whatevs.`,
+      `Hey ${target}, Captain ${interaction.user} sent me to look for you. Consider yourself greeted. Now leave me alone.`,
+      `Ugh, Captain ${interaction.user} is being lazy again and forced me to say hi to you, ${target}. Don't get any ideas, alright?`,
+      `Look, ${target}, I'm just here because Captain ${interaction.user} told me to. Hi. There, mission accomplished.`,
+    ];
+
+    const randomIndex = Math.floor(Math.random() * randomGreetings.length);
+    const chosenGreeting = randomGreetings[randomIndex];
+
     const greeting = isSelf
       ? `Yo, Captain ${interaction.user}!`
       : isBot
         ? `Tch, stop making me talk to myself.`
-        : `Oi, Captain ${interaction.user} told me to say hello to you, ${target}. I don't know why he can't say it himself though. Whatevs.`;
+        : chosenGreeting;
 
     await interaction.editReply(greeting);
   },
