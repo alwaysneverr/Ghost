@@ -20,7 +20,9 @@ export default {
 
       try {
         await message.reply(chosenRant);
-      } catch (_error) {}
+      } catch (_error) {
+        // If the reply fails (e.g., the channel is deleted), ignore it to prevent the bot from crashing
+      }
     }
   },
 };

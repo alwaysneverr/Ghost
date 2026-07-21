@@ -21,7 +21,7 @@ export default {
   async execute(interaction) {
     await interaction.deferReply();
 
-    const latency = interaction.createdTimestamp - Date.now();
+    const latency = Math.abs(Date.now() - interaction.createdTimestamp);
     const apiLatency = Math.round(interaction.client.ws.ping);
 
     await interaction.editReply(

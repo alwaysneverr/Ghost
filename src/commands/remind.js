@@ -61,10 +61,9 @@ export default {
       const finalRant = reminderRants[Math.floor(Math.random() * reminderRants.length)];
 
       try {
-        // Kirim pengingat asli secara publik menggunakan followUp agar user ter-tag nyata
         await interaction.followUp({ content: finalRant });
       } catch (_error) {
-        // Jika gagal (misal channel sudah dihapus), abaikan agar bot tidak crash
+        // If the follow-up fails (e.g., the channel is deleted), ignore it to prevent the bot from crashing
       }
     }, milliseconds);
   },
