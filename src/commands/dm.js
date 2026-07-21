@@ -87,22 +87,23 @@ function getDMFailureReason(error, target) {
   // Discord API error codes
   switch (error?.code) {
     case RESTJSONErrorCodes.CannotSendMessagesToThisUser:
-      // Memakai variabel 'target' di sini agar ESLint tidak error (no-unused-vars)
-      return `${target.username} has DMs disabled or is not accepting messages from non-friends.`;
+      return `Captain, ${target.username} has DMs disabled! I can't send shit to them. Or... they're not accepting messages from non-friends. Wow, you don't have many friends, don'tcha?`;
     case RESTJSONErrorCodes.UnknownUser:
-      return 'that user does not exist.';
+      return `Captain, I might be called Ghost before, but that doesn't mean I can reach people that doesn't exist.`;
     case RESTJSONErrorCodes.UnknownChannel:
-      return 'the DM channel could not be opened.';
+      return `I know you're powerful and all, Captain, but that still means jackshit if the target doesn't have a DM channel.`;
     case RESTJSONErrorCodes.MissingPermissions:
-      return 'the bot is missing permissions to send DMs.';
+      return 'Captain, you forgot to give me the right permissions. Dumbass.';
     case RESTJSONErrorCodes.RequestEntityTooLarge:
-      return 'the message or image is too large to send.';
+      return `Stop yapping so much! I literally can't even remember what you said! Those images are also too pristine, I can't send them over!`;
     case RESTJSONErrorCodes.InvalidFormBody:
-      return 'the image URL is invalid or could not be loaded.';
+      return `Captain, you sure you want me to send a blank image to them? Really?`;
     default:
       // Network or unknown errors
-      if (error?.status === 429) return 'the bot is being rate limited, try again in a moment.';
-      if (error?.status >= 500) return 'Discord is experiencing issues, try again later.';
-      return `an unexpected error occurred (code: ${error?.code ?? error?.status ?? 'unknown'}).`;
+      if (error?.status === 429)
+        return `Sorry, Captain, I got too much stuff to handle. Try again in a few seconds.`;
+      if (error?.status >= 500)
+        return `The multiverse itself is erroring out. Not much I can do when that's the case. Maybe we should ask Sophitia for help?`;
+      return `Whoa! I keep seeing this number over and over. What's this all about? (code: ${error?.code ?? error?.status ?? 'unknown'}).`;
   }
 }
