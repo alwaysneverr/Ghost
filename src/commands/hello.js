@@ -1,5 +1,9 @@
-import { SlashCommandBuilder, InteractionContextType, ApplicationIntegrationType } from 'discord.js';
- 
+import {
+  SlashCommandBuilder,
+  InteractionContextType,
+  ApplicationIntegrationType,
+} from 'discord.js';
+
 export default {
   data: new SlashCommandBuilder()
     .setName('hello')
@@ -13,30 +17,27 @@ export default {
       ApplicationIntegrationType.GuildInstall,
       ApplicationIntegrationType.UserInstall,
     ])
-    .addUserOption(option =>
+    .addUserOption((option) =>
       option
         .setName('user')
         .setDescription('The user to greet (works in servers)')
         .setRequired(false)
     )
-    .addStringOption(option =>
+    .addStringOption((option) =>
       option
         .setName('target')
         .setDescription('Who to greet in DMs')
         .setRequired(false)
-        .addChoices(
-          { name: 'Me', value: 'me' },
-          { name: 'Bot', value: 'bot' },
-        )
+        .addChoices({ name: 'Me', value: 'me' }, { name: 'Bot', value: 'bot' })
     ),
- 
+
   async execute(interaction) {
     await interaction.deferReply();
- 
+
     const botUser = interaction.client.user;
     const userOption = interaction.options.getUser('user');
     const targetOption = interaction.options.getString('target');
- 
+
     // Resolve the target: string choice takes priority in DM context
     let target;
     if (targetOption === 'bot') {
@@ -46,13 +47,16 @@ export default {
     } else {
       target = userOption;
     }
- 
-   const greeting = isSelf
+
+    const isSelf = target.id === interaction.user.id;
+    const isBot = target.id === botUser.id;
+
+    const greeting = isSelf
       ? `Yo, Captain ${interaction.user}!`
-      : isBot 
-      ? `Tch, stop making me talk to myself.` 
-      : `Oi, Captain ${interaction.user} told me to say hello to you, ${target}. I don't know why he can't say it himself though. Whatevs.`;
- 
+      : isBot
+        ? `Tch, stop making me talk to myself.`
+        : `Oi, Captain ${interaction.user} told me to say hello to you, ${target}. I don't know why he can't say it himself though. Whatevs.`;
+
     await interaction.editReply(greeting);
   },
 };

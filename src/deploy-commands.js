@@ -3,19 +3,19 @@ import { REST, Routes } from 'discord.js';
 import { readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
- 
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID } = process.env;
- 
+
 if (!DISCORD_TOKEN || !CLIENT_ID) {
   console.error('❌ Missing DISCORD_TOKEN or CLIENT_ID in your .env file');
   process.exit(1);
 }
- 
+
 const commands = [];
 const commandsPath = join(__dirname, 'commands');
-const commandFiles = readdirSync(commandsPath).filter(f => f.endsWith('.js'));
- 
+const commandFiles = readdirSync(commandsPath).filter((f) => f.endsWith('.js'));
+
 for (const file of commandFiles) {
   const command = (await import(pathToFileURL(join(commandsPath, file)).href)).default;
   if ('data' in command) {
@@ -23,24 +23,20 @@ for (const file of commandFiles) {
     console.log(`📝 Queued: /${command.data.name}`);
   }
 }
- 
+
 const rest = new REST().setToken(DISCORD_TOKEN);
- 
+
 try {
   console.log(`\n🚀 Registering ${commands.length} slash command(s)...`);
- 
+
   let data;
   if (GUILD_ID) {
-    data = await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
-    );
+    data = await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
     console.log(`✅ Registered ${data.length} command(s) to guild ${GUILD_ID} (instant)`);
   } else {
-    data = await rest.put(
-      Routes.applicationCommands(CLIENT_ID),
-      { body: commands }
-    );
+    data = await rest.put(Routes.applicationCommands(CLIENT_ID), {
+      body: commands,
+    });
     console.log(`✅ Registered ${data.length} global command(s) (~1 hour to propagate)`);
   }
 } catch (error) {
