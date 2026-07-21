@@ -28,21 +28,6 @@ export default {
     )
     .addStringOption((option) =>
       option.setName('message').setDescription('The message to send').setRequired(true)
-    )
-    .addStringOption((option) =>
-      option.setName('image').setDescription('Image URL to include in the embed').setRequired(false)
-    )
-    .addStringOption((option) =>
-      option
-        .setName('button_label')
-        .setDescription('Label for an optional button')
-        .setRequired(false)
-    )
-    .addStringOption((option) =>
-      option
-        .setName('button_url')
-        .setDescription('URL for the button (requires button_label)')
-        .setRequired(false)
     ),
 
   async execute(interaction) {
@@ -50,31 +35,9 @@ export default {
 
     const target = interaction.options.getUser('user');
     const message = interaction.options.getString('message');
-    const imageUrl = interaction.options.getString('image');
-    const buttonLabel = interaction.options.getString('button_label');
-    const buttonUrl = interaction.options.getString('button_url');
-
-    // Build the embed
-    const embed = new EmbedBuilder()
-      .setDescription(message)
-      .setColor(0x5865f2)
-      .setFooter({ text: `Sent by ${interaction.user.username}` })
-      .setTimestamp();
-
-    if (imageUrl) embed.setImage(imageUrl);
-
-    // Build optional button
-    const components = [];
-    if (buttonLabel && buttonUrl) {
-      const button = new ButtonBuilder()
-        .setLabel(buttonLabel)
-        .setURL(buttonUrl)
-        .setStyle(ButtonStyle.Link);
-      components.push(new ActionRowBuilder().addComponents(button));
-    }
 
     try {
-      await target.send({ embeds: [embed], components });
+      await target.send(message);
       await interaction.editReply(`✅ DM sent to ${target.username}`);
     } catch (error) {
       const reason = getDMFailureReason(error, target);
