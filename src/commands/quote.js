@@ -35,8 +35,8 @@ export default {
   async execute(interaction) {
     await interaction.deferReply();
 
-    const { text } = quotes[Math.floor(Math.random() * quotes.length)];
+    const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
 
-    await interaction.editReply(`"${text}"`);
+    await interaction.editReply(randomQuote.text);
   },
 };
