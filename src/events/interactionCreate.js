@@ -18,7 +18,7 @@ export default {
     } catch (error) {
       console.error(`❌ Error executing /${interaction.commandName}:`, error);
       const errorMessage = {
-        content: '❌ Something went wrong running that command.',
+        content: `❌ Tch, something went wrong running /${interaction.commandName}. Don't look at me, it's probably Captain's faulty code.`,
         ephemeral: true,
       };
       if (interaction.replied || interaction.deferred) {
