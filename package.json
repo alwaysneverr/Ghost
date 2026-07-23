@@ -1,7 +1,7 @@
 {
   "name": "Ghost",
-  "version": "0.0.1",
-  "description": "General purpose Discord bot. A bit bratty (on purpose). Based on Ghost from the visual novel 9-nine-.",
+  "version": "0.1.0",
+  "description": "A Discord bot. Also a Chatbot in development. A bit bratty (on purpose). Based on Ghost from the visual novel 9-nine-.",
   "type": "module",
   "main": "src/index.js",
   "scripts": {

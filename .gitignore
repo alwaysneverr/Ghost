@@ -11,7 +11,13 @@ package-lock.json
 .DS_Store
 Thumbs.db
 
+# sensitive data
+data/
+
 # Logs
 logs
 *.log
 npm-debug.log*
+
+# fine-tune
+finetune/
