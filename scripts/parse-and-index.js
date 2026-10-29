@@ -6,6 +6,11 @@
  * character (and her aliases), chunks it with surrounding context, embeds
  * each chunk via Ollama, and writes the result to data/index.json.
  *
+ * Each chunk stores its EN/JA/ZH text SEPARATELY — the reference text shown
+ * to the model must stay single-language, or the model starts mimicking a
+ * bilingual reply format. Embedding uses a combined string across all three
+ * purely for multilingual search matching.
+ *
  * Usage: node scripts/parse-and-index.js
  */
 
@@ -13,6 +18,7 @@ import 'dotenv/config';
 import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { parseScriptFile } from './lib/script-parser.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = join(__dirname, '..', 'data', 'scripts');
@@ -30,44 +36,22 @@ const TARGET_ALIASES = (process.env.SCRIPT_TARGET_ALIASES || 'Ghost,Lena')
 const CHUNK_SIZE = 10;   // lines per chunk
 const CHUNK_STRIDE = 7;  // step between chunk starts (creates overlap for context continuity)
 
-// ── Parse one script file's markdown table into row objects ────────────────
-function parseScriptFile(text) {
-  const rows = [];
-  for (const raw of text.split('\n')) {
-    const line = raw.trim();
-    if (!line.startsWith('|')) continue;
-
-    const cells = line.split('|').slice(1, -1).map(c => c.trim());
-    if (cells.length < 8) continue;
-
-    const [lineNo, jpActor, jpOverride, jpDialogue, enCharacter, enDialogue, cnCharacter, cnDialogue] = cells;
-
-    if (lineNo === 'Line' || /^-+$/.test(lineNo)) continue; // header/separator row
-    if (!/^\d+$/.test(lineNo)) continue;
-
-    rows.push({
-      line: Number(lineNo),
-      jpActor, jpOverride, jpDialogue,
-      enCharacter, enDialogue,
-      cnCharacter, cnDialogue,
-    });
-  }
-  return rows;
-}
-
-// ── Format a window of rows into readable text for embedding + prompting ───
-function formatWindow(rows) {
-  return rows
+// ── Render a window of rows into readable text in ONE language ─────────────
+function renderWindowLang(rows, lang) {
+  const lines = rows
     .map(r => {
-      const speaker = r.enCharacter || null;
-      // Combine all three language variants so the multilingual embedding
-      // model gets signal regardless of which language the user chats in.
-      const text = [r.enDialogue, r.jpDialogue, r.cnDialogue].filter(Boolean).join(' / ');
+      let speaker, text;
+      if (lang === 'en') { speaker = r.enCharacter; text = r.enDialogue; }
+      else if (lang === 'ja') { speaker = r.jpActor; text = r.jpDialogue; }
+      else if (lang === 'zh') { speaker = r.cnCharacter; text = r.cnDialogue; }
+      else return null;
+
       if (!text) return null;
       return speaker ? `${speaker}: ${text}` : `(narration): ${text}`;
     })
-    .filter(Boolean)
-    .join('\n');
+    .filter(Boolean);
+
+  return lines.length > 0 ? lines.join('\n') : null;
 }
 
 function isTargetLine(row) {
@@ -85,13 +69,18 @@ function buildChunks(rows, file) {
       continue;
     }
 
-    const text = formatWindow(window);
-    if (text) {
+    const textEn = renderWindowLang(window, 'en');
+    const textJa = renderWindowLang(window, 'ja');
+    const textZh = renderWindowLang(window, 'zh');
+
+    if (textEn || textJa || textZh) {
       chunks.push({
         file,
         lineStart: window[0].line,
         lineEnd: window[window.length - 1].line,
-        text,
+        textEn,
+        textJa,
+        textZh,
       });
     }
 
@@ -139,8 +128,12 @@ async function main() {
   const indexed = [];
   for (let i = 0; i < allChunks.length; i++) {
     const chunk = allChunks[i];
+    // Combine all available languages purely for search matching — this
+    // combined string is NEVER shown to the model, only textEn/textJa/textZh are.
+    const embedInput = [chunk.textEn, chunk.textJa, chunk.textZh].filter(Boolean).join(' / ');
+
     try {
-      const embedding = await embed(chunk.text);
+      const embedding = await embed(embedInput);
       indexed.push({ ...chunk, embedding });
     } catch (error) {
       console.error(`⚠️  Failed to embed chunk ${i} (${chunk.file}:${chunk.lineStart}):`, error.message);
