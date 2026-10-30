@@ -1,4 +1,4 @@
-import { Events } from 'discord.js';
+import { Events, MessageFlags } from 'discord.js';
 
 export default {
   name: Events.InteractionCreate,
@@ -19,7 +19,7 @@ export default {
       console.error(`❌ Error executing /${interaction.commandName}:`, error);
       const errorMessage = {
         content: `❌ Tch, something went wrong running /${interaction.commandName}. Don't look at me, it's probably Captain's faulty code.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       };
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp(errorMessage);

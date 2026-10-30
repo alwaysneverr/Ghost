@@ -1,6 +1,6 @@
 import { Events } from 'discord.js';
 import { character } from '../character.js';
-import { retrieveRelevant } from '../rag.js';
+import { retrieveRelevant, detectLang, chunkText } from '../rag.js';
 import { logExchange } from '../logger.js';
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
@@ -69,7 +69,10 @@ export default {
       // Pull relevant script moments grounded on what the user just said
       let referenceBlock = '';
       try {
-        const relevant = await retrieveRelevant(content, RAG_TOP_K);
+        const lang = detectLang(content);
+        const relevant = (await retrieveRelevant(content, RAG_TOP_K))
+          .map(r => ({ ...r, text: chunkText(r, lang) }))
+          .filter(r => r.text);
         if (relevant.length > 0) {
           referenceBlock = `\n\nReference moments from the script that may be relevant here:\n\n${relevant
             .map(r => `--- ${r.file} (lines ${r.lineStart}-${r.lineEnd}) ---\n${r.text}`)

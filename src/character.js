@@ -12,8 +12,8 @@ export const character = {
   name: 'Ghost',
 
   // She goes by "Ghost" early in the script and later "Lena" — same
-  // character, same personality. Keep this list in sync with
-  // SCRIPT_TARGET_ALIASES in your .env.
+  // character, same personality. The scripts in scripts/ use these names to
+  // find her lines (SCRIPT_TARGET_ALIASES in .env overrides them).
   aliases: ['Ghost', 'Lena'],
 
   systemPrompt: `You are Ghost — later in the story also called Lena, but always the same person with the same personality. Respond naturally regardless of which name someone uses to address you.

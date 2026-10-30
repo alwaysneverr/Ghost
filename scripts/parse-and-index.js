@@ -18,45 +18,21 @@ import 'dotenv/config';
 import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { parseScriptFile } from './lib/script-parser.js';
+import { parseScriptFile, targetAliases, isTargetRow, renderRows } from './lib/script-parser.js';
+import { embed } from '../src/rag.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = join(__dirname, '..', 'data', 'scripts');
 const OUTPUT_PATH = join(__dirname, '..', 'data', 'index.json');
 
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || 'bge-m3';
 
-// List every name she's credited under across the script (she starts as
-// "Ghost", later becomes "Lena" — both point to the same character).
-const TARGET_ALIASES = (process.env.SCRIPT_TARGET_ALIASES || 'Ghost,Lena')
-  .split(',')
-  .map(s => s.trim().toLowerCase());
+// Every name she's credited under across the script (she starts as "Ghost",
+// later becomes "Lena" — both point to the same character).
+const TARGET_ALIASES = targetAliases();
 
 const CHUNK_SIZE = 10;   // lines per chunk
 const CHUNK_STRIDE = 7;  // step between chunk starts (creates overlap for context continuity)
-
-// ── Render a window of rows into readable text in ONE language ─────────────
-function renderWindowLang(rows, lang) {
-  const lines = rows
-    .map(r => {
-      let speaker, text;
-      if (lang === 'en') { speaker = r.enCharacter; text = r.enDialogue; }
-      else if (lang === 'ja') { speaker = r.jpActor; text = r.jpDialogue; }
-      else if (lang === 'zh') { speaker = r.cnCharacter; text = r.cnDialogue; }
-      else return null;
-
-      if (!text) return null;
-      return speaker ? `${speaker}: ${text}` : `(narration): ${text}`;
-    })
-    .filter(Boolean);
-
-  return lines.length > 0 ? lines.join('\n') : null;
-}
-
-function isTargetLine(row) {
-  return TARGET_ALIASES.includes((row.enCharacter || '').toLowerCase());
-}
 
 // ── Build overlapping chunks, keep only ones featuring the target character ─
 function buildChunks(rows, file) {
@@ -64,14 +40,14 @@ function buildChunks(rows, file) {
   for (let start = 0; start < rows.length; start += CHUNK_STRIDE) {
     const window = rows.slice(start, start + CHUNK_SIZE);
     if (window.length === 0) break;
-    if (!window.some(isTargetLine)) {
+    if (!window.some(row => isTargetRow(row, TARGET_ALIASES))) {
       if (start + CHUNK_SIZE >= rows.length) break;
       continue;
     }
 
-    const textEn = renderWindowLang(window, 'en');
-    const textJa = renderWindowLang(window, 'ja');
-    const textZh = renderWindowLang(window, 'zh');
+    const textEn = renderRows(window, 'en');
+    const textJa = renderRows(window, 'ja');
+    const textZh = renderRows(window, 'zh');
 
     if (textEn || textJa || textZh) {
       chunks.push({
@@ -87,17 +63,6 @@ function buildChunks(rows, file) {
     if (start + CHUNK_SIZE >= rows.length) break;
   }
   return chunks;
-}
-
-async function embed(text) {
-  const res = await fetch(`${OLLAMA_URL}/api/embeddings`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: EMBED_MODEL, prompt: text }),
-  });
-  if (!res.ok) throw new Error(`Embedding request failed: HTTP ${res.status}`);
-  const data = await res.json();
-  return data.embedding;
 }
 
 async function main() {

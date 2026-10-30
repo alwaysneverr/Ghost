@@ -40,7 +40,9 @@ function cosineSimilarity(a, b) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-async function embedQuery(text) {
+// Also used by scripts/parse-and-index.js so indexing and querying always
+// embed the same way.
+export async function embed(text) {
   const res = await fetch(`${OLLAMA_URL}/api/embeddings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -56,7 +58,7 @@ export async function retrieveRelevant(query, topK = 4) {
   const chunks = loadIndex();
   if (chunks.length === 0) return [];
 
-  const queryEmbedding = await embedQuery(query);
+  const queryEmbedding = await embed(query);
 
   const scored = chunks.map(chunk => ({
     ...chunk,
@@ -65,4 +67,20 @@ export async function retrieveRelevant(query, topK = 4) {
 
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, topK);
+}
+
+// Rough language guess from the user's message so reference chunks can be
+// shown in the same language. Kana means Japanese; Han without kana means
+// Chinese; anything else falls back to English.
+export function detectLang(text) {
+  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return 'ja';
+  if (/\p{Script=Han}/u.test(text)) return 'zh';
+  return 'en';
+}
+
+// Picks a chunk's single-language text (see parse-and-index.js for why the
+// languages are kept separate), falling back to English when missing.
+export function chunkText(chunk, lang) {
+  const byLang = { en: chunk.textEn, ja: chunk.textJa, zh: chunk.textZh };
+  return byLang[lang] || chunk.textEn || null;
 }

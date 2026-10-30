@@ -4,6 +4,7 @@ import configPrettier from 'eslint-config-prettier';
 import globals from 'globals';
 
 export default [
+  { ignores: ['node_modules/', 'data/', 'finetune/'] },
   js.configs.recommended,
   configPrettier,
   {
@@ -20,9 +21,8 @@ export default [
     },
     rules: {
       'prettier/prettier': 'error',
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
       'no-undef': 'error',
     },
   },
 ];
-('error');

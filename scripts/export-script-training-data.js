@@ -14,19 +14,23 @@
  * Usage: node scripts/export-script-training-data.js
  */
 
+import 'dotenv/config';
 import { readdirSync, readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { parseScriptFile } from './lib/script-parser.js';
+import {
+  parseScriptFile,
+  targetAliases,
+  isTargetRow as isAliasRow,
+  renderRows,
+} from './lib/script-parser.js';
 import { character } from '../src/character.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = join(__dirname, '..', 'data', 'scripts');
 const OUTPUT_PATH = join(__dirname, '..', 'data', 'script-training-data.jsonl');
 
-const TARGET_ALIASES = (process.env.SCRIPT_TARGET_ALIASES || 'Ghost,Lena')
-  .split(',')
-  .map(s => s.trim().toLowerCase());
+const TARGET_ALIASES = targetAliases();
 
 // How many prior turns to include as conversation history before each of
 // her lines — kept modest so examples resemble the short back-and-forth
@@ -34,7 +38,7 @@ const TARGET_ALIASES = (process.env.SCRIPT_TARGET_ALIASES || 'Ghost,Lena')
 const MAX_CONTEXT_TURNS = 4;
 
 function isTargetRow(row) {
-  return TARGET_ALIASES.includes((row.enCharacter || '').toLowerCase());
+  return isAliasRow(row, TARGET_ALIASES);
 }
 
 // ── Group consecutive rows into speaker "turns" ─────────────────────────
@@ -57,24 +61,6 @@ function groupIntoTurns(rows) {
   return turns;
 }
 
-// ── Render a turn's text in one language ────────────────────────────────
-function renderTurn(turn, lang) {
-  const lines = turn.rows
-    .map(row => {
-      let speaker, text;
-      if (lang === 'en') { speaker = row.enCharacter; text = row.enDialogue; }
-      else if (lang === 'ja') { speaker = row.jpActor; text = row.jpDialogue; }
-      else if (lang === 'zh') { speaker = row.cnCharacter; text = row.cnDialogue; }
-      else return null;
-
-      if (!text) return null;
-      return speaker ? `${speaker}: ${text}` : `(narration): ${text}`;
-    })
-    .filter(Boolean);
-
-  return lines.length > 0 ? lines.join('\n') : null;
-}
-
 // ── Build training examples from one file's turns ───────────────────────
 function buildExamples(turns, file) {
   const examples = [];
@@ -91,7 +77,7 @@ function buildExamples(turns, file) {
       let ok = true;
 
       for (const ctxTurn of contextTurns) {
-        const text = renderTurn(ctxTurn, lang);
+        const text = renderRows(ctxTurn.rows, lang);
         if (!text) { ok = false; break; }
         history.push({
           role: isTargetRow(ctxTurn.rows[0]) ? 'assistant' : 'user',
@@ -100,7 +86,7 @@ function buildExamples(turns, file) {
       }
       if (!ok || history.length === 0 || history[0].role !== 'user') continue;
 
-      const responseText = renderTurn(turn, lang);
+      const responseText = renderRows(turn.rows, lang);
       if (!responseText) continue;
 
       examples.push({

@@ -5,9 +5,13 @@
   "type": "module",
   "main": "src/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "deploy": "node src/deploy-commands.js",
+    "index": "node scripts/parse-and-index.js",
+    "export:script": "node scripts/export-script-training-data.js",
+    "export:logs": "node scripts/export-training-data.js",
+    "lint": "eslint ."
   },
   "keywords": [],
   "author": "",
@@ -22,7 +26,6 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",
     "globals": "^17.7.0",
-    "prettier": "3.9.5",
-    "prettier-eslint": "^17.1.1"
+    "prettier": "3.9.5"
   }
 }
