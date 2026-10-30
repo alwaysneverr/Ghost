@@ -8,6 +8,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { character } from './character.js';
+import { needsGentleReply } from './safety.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const INDEX_PATH = join(__dirname, '..', 'data', 'index.json');
@@ -74,7 +75,10 @@ export async function retrieveRelevant(query, topK = 4) {
 // and scripts/eval-prompts.js so both send exactly the same thing. Validation
 // and their message go last, so a retrieved scene isn't the most recent thing
 // the model read: it would otherwise carry on the scene instead of replying.
-export async function buildSystemPrompt(content, topK = 4) {
+// Someone hurting gets the short griefPrompt instead, with no scenes at all.
+export async function buildSystemPrompt(content, topK = 4, userMessages = [content]) {
+  if (needsGentleReply(userMessages)) return character.griefPrompt;
+
   let referenceBlock = '';
   try {
     const relevant = (await retrieveRelevant(content, topK)).filter(r => r.text);

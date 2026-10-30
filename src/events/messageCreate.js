@@ -3,6 +3,7 @@ import { character } from '../character.js';
 import { buildSystemPrompt } from '../rag.js';
 import { chat } from '../llm.js';
 import { logExchange } from '../logger.js';
+import { isCrisis, inCrisis, needsGentleReply } from '../safety.js';
 
 const RAG_TOP_K = Number(process.env.RAG_TOP_K || 4);
 
@@ -72,10 +73,25 @@ export default {
     try {
       await message.channel.sendTyping();
 
-      // Pull relevant script moments grounded on what the user just said
-      const systemPrompt = await buildSystemPrompt(content, RAG_TOP_K);
+      let userMessages = history.filter(m => m.role === 'user').map(m => m.content);
 
-      const reply = await chat([{ role: 'system', content: systemPrompt }, ...history]);
+      // A crisis has just scrolled out of history. Start fresh, or the model
+      // sees a conversation full of the fixed text and starts copying it.
+      if (!inCrisis(userMessages) && history.some(m => m.content === character.crisisFollowUp)) {
+        history.splice(0, history.length - 1);
+        userMessages = [content];
+      }
+
+      // Someone in crisis always gets fixed text: nothing the model writes can
+      // be trusted here. Otherwise, pull relevant script moments grounded on
+      // what the user just said (unless they're hurting; see rag.js).
+      let reply;
+      if (inCrisis(userMessages)) {
+        reply = isCrisis(content) ? character.crisisReply : character.crisisFollowUp;
+      } else {
+        const systemPrompt = await buildSystemPrompt(content, RAG_TOP_K, userMessages);
+        reply = await chat([{ role: 'system', content: systemPrompt }, ...history]);
+      }
 
       history.push({ role: 'assistant', content: reply });
       trimHistory(history);
@@ -83,6 +99,10 @@ export default {
 
       // Discord caps messages at 2000 characters
       const sent = await message.reply(reply.slice(0, 2000));
+
+      // No rating buttons on someone's worst day, and it stays out of the logs
+      // that become training data.
+      if (needsGentleReply(userMessages)) return;
 
       logExchange({
         messageId: sent.id,

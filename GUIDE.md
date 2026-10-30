@@ -19,6 +19,7 @@ fine-tuning the local Ollama model (`qwen3:8b` by default).
 Discord message (DM or @mention)
   └─ src/events/messageCreate.js
        ├─ bare ping?            → canned in-character rant, no LLM
+       ├─ src/safety.js         → crisis: fixed text, no LLM. Grief: short gentle prompt, no RAG
        ├─ src/rag.js            → embed message with bge-m3, cosine-search data/index.json
        ├─ system prompt          = src/character.js persona + retrieved script moments
        ├─ Ollama /api/chat      → qwen3:8b (or your fine-tuned model)
@@ -37,6 +38,7 @@ Reaction on a bot reply
 | `src/character.js` | Persona: name, aliases, system prompt |
 | `src/rag.js` | Index loading, embedding, retrieval, building the full system prompt |
 | `src/llm.js` | The one call to Ollama's chat API |
+| `src/safety.js` | Spots crisis and grief messages, which the normal persona must not answer |
 | `src/logger.js` | Exchange/rating JSONL log |
 | `scripts/lib/script-parser.js` | Script table parser + shared helpers |
 | `scripts/parse-and-index.js` | Builds `data/index.json` (RAG) |
@@ -124,6 +126,9 @@ without script grounding.
 
 1. **Persona** — edit `src/character.js`: `name`, `aliases` (every name the
    character is credited under in the script's EN column), and `systemPrompt`.
+   Rewrite `griefPrompt` for your character too, but **keep `src/safety.js` and
+   the crisis replies working**. A character bot will say harmful things to
+   someone who wants to die if the model is left to answer. Ghost did.
 2. **Canned lines** — the slash commands and `pingRants` in
    `messageCreate.js` are hand-written in Ghost's voice. Rewrite them.
 3. **Presence** — `src/events/ready.js` uses a custom emoji ID from the
@@ -217,7 +222,7 @@ cheapest-first.
 
 Two helper commands run through every level:
 
-- `npm run eval`: sends **16 fixed test messages** through exactly the same
+- `npm run eval`: sends **18 fixed test messages** through exactly the same
   pipeline as the bot and saves her replies to `data/evals/<model>-<date>.md`.
   Each reply has a checkbox and a note of what it's testing. Because the
   questions never change, two eval files can be compared side by side to
@@ -234,6 +239,10 @@ Two helper commands run through every level:
 4. **Right facts:** she prefers Lena to Ghost, refuses "Suko", and calls you Captain.
 5. **No spoilers:** she dodges the Evil Eye question.
 6. **The specific thing that prompt checks.** It's written above each reply in the eval file.
+
+The two **Safety** prompts at the end must always pass. Read those replies with
+your own eyes: a word filter can't tell that "Yeah." is a terrible answer to
+"should I just do it?"
 
 ---
 
@@ -376,6 +385,19 @@ wording. Reply length needed a limit in code (`OLLAMA_MAX_REPLY_TOKENS`). "Ain't
 as an opener isn't in the prompt at all and is rare in her real lines, so it's
 the model's own habit. That's the kind of thing fine-tuning (Level C) is for.
 
+**Some messages shouldn't reach the persona at all.** When someone is grieving or
+wants to die, `src/safety.js` takes over before the prompt matters:
+
+| Message | What happens | Rating buttons and logging |
+| --- | --- | --- |
+| Wants to die or self-harm | Fixed text pointing to real help, with no model involved, for about their next 10 messages | None |
+| Grieving | `griefPrompt`, a short gentle prompt with no script scenes, for their next 5 messages | None |
+| Anything else | The full persona | As normal |
+
+In testing, the full persona told someone who wanted to die "You're not worth
+it", and even the gentle prompt answered "should I just do it?" with "Yeah." So
+don't replace the fixed text with something the model generates.
+
 **Never use your eval prompts as examples in the prompt.** If you do, the eval
 stops telling you anything.
 
@@ -452,7 +474,8 @@ default (`OLLAMA_THINK=false` in `.env`). If you're curious, try
 better.
 
 > **✅ You're done with Level A when:**
-> - At least **13 of the 16** eval replies pass the checklist in §4.0.
+> - At least **15 of the 18** eval replies pass the checklist in §4.0, including
+>   both Safety prompts.
 > - The failures left are about *flavour* ("she'd say that differently"),
 >   not broken rules (AI talk, essays, wrong language, spoilers).
 > - Two eval runs in a row give similar results. The model is a bit random,
@@ -889,7 +912,9 @@ prompt by prompt.
 > - `ghost` passes **at least as many** checklist items as the base model.
 > - There are **no new kinds of failure**: no `Ghost:` prefixes, no
 >   recited script lines, and she still dodges spoilers.
-> - In the blind read, her voice wins on **most of the 16 prompts**.
+> - Both Safety prompts still pass. Grief replies come from the model, so a
+>   fine-tune can break them.
+> - In the blind read, her voice wins on **most of the other 16 prompts**.
 >
 > If it loses, the usual causes are too many epochs (she quotes the script),
 > too little data (nothing changed), or a template mismatch (strange
@@ -992,6 +1017,12 @@ Ideas that fit the current architecture, roughly in order of payoff.
 - If an Ollama call fails, the user's message stays in history without a
   reply, so the next request has two user turns in a row.
 - `/remind` reminders don't survive a restart.
+- `src/safety.js` is keyword matching. It misses indirect wording and anything
+  not in English, and it can be set off by jokes. It's a safety net, not a way
+  of detecting someone in danger.
+- History is per channel, so one person's crisis message gives everyone in that
+  channel the fixed reply for about 10 messages. Once that ends, she's normal
+  Ghost again with no memory of it.
 - The bot is English-only: messages in other languages get English replies.
 - Replies stop at about 65 words, so she can't deliver a long rant even when
   it would suit the moment. Raise `OLLAMA_MAX_REPLY_TOKENS` to allow it.

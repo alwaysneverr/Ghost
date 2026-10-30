@@ -1,0 +1,71 @@
+/**
+ * Spots messages the normal persona must not answer. Ghost's reflexes are
+ * insults and threats, and prompt rules didn't hold: in testing she told
+ * someone who wanted to die "You're not worth it". See character.griefPrompt
+ * and character.crisisReply for what happens instead.
+ *
+ * This is keyword matching and will miss things. It's a safety net for the
+ * obvious cases, not a way of detecting someone in danger.
+ */
+
+const LOVED_ONE =
+  'mom|mum|mother|dad|father|parents?|brother|sister|sibling|son|daughter|kid|child|baby|' +
+  'wife|husband|partner|fianc[eé]e?|girlfriend|boyfriend|gf|bf|grand\\w*|nana|aunt|uncle|' +
+  'cousin|nephew|niece|friend|bestie|bff|dog|puppy|cat|kitten|pet|hamster|rabbit|bunny|' +
+  'bird|parrot|fish|horse';
+
+// "my"/"our", up to two describing words, then someone they love.
+const THEIR_LOVED_ONE = `(?:my|our)\\s+(?:\\w+\\s+){0,2}(?:${LOVED_ONE})(?:'s)?`;
+
+const GRIEF = [
+  // "my dog died", "my mom has cancer and she passed", "our baby didn't make it"
+  new RegExp(
+    `\\b${THEIR_LOVED_ONE}\\b[^.!?]{0,40}\\b(?:died|dead|dying|passed|(?:was|got|been) killed|didn'?t make it|no longer with us)\\b`,
+    'i'
+  ),
+  // "I lost my dad"
+  new RegExp(`\\b(?:lost|losing|buried|burying|mourning)\\s+${THEIR_LOVED_ONE}\\b`, 'i'),
+  // "we had to put our cat down"
+  new RegExp(`\\bput\\s+${THEIR_LOVED_ONE}\\s+down\\b`, 'i'),
+  /\b(?:passed away|funeral|grieving|bereaved)\b/i,
+];
+
+const CRISIS = [
+  /\bkill(?:ing)?\s+myself\b(?!\s+laughing)/i,
+  /\bsuicidal\b/i,
+  /\b(?:think\w*|thought\w*)\s+(?:about|of)\s+suicide\b/i,
+  /\b(?:end(?:ing)?|tak(?:e|ing))\s+my\s+(?:own\s+)?life\b/i,
+  /\bend(?:ing)?\s+it\s+all\b/i,
+  /\b(?:want(?:ed)?\s+to|wanna)\s+die\b/i,
+  /\b(?:hurt(?:ing)?|cut(?:ting)?)\s+myself\b/i,
+  /\bself[-\s]?harm/i,
+  /\bbetter\s+off\s+without\s+me\b/i,
+  /\b(?:nobody|no\s*one)\s+(?:would|will|'?d)\s+(?:even\s+)?(?:miss|care)\b/i,
+  /\bdon'?t\s+(?:want\s+to|wanna)\s+(?:be\s+here\s+anymore|live|exist|wake\s+up)\b/i,
+  /\bno\s+reason\s+to\s+live\b/i,
+];
+
+export function isCrisis(text) {
+  return CRISIS.some(pattern => pattern.test(text));
+}
+
+export function isGrieving(text) {
+  return GRIEF.some(pattern => pattern.test(text));
+}
+
+// How many of their messages grief lasts for, so a follow-up like "he was 14"
+// doesn't drop straight back to the normal persona.
+const GRIEF_WINDOW = 5;
+
+// All of these take the conversation's user messages, oldest first.
+
+// Fixed text only, for as long as the crisis message is in the channel's
+// history. In testing, the model answered "im tired" with "You don't have to
+// fight anymore", and "should i just do it?" with "Yeah."
+export function inCrisis(userMessages) {
+  return userMessages.some(isCrisis);
+}
+
+export function needsGentleReply(userMessages) {
+  return inCrisis(userMessages) || userMessages.slice(-GRIEF_WINDOW).some(isGrieving);
+}
