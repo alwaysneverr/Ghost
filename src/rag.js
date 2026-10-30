@@ -7,6 +7,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { character } from './character.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const INDEX_PATH = join(__dirname, '..', 'data', 'index.json');
@@ -69,18 +70,20 @@ export async function retrieveRelevant(query, topK = 4) {
   return scored.slice(0, topK);
 }
 
-// Rough language guess from the user's message so reference chunks can be
-// shown in the same language. Kana means Japanese; Han without kana means
-// Chinese; anything else falls back to English.
-export function detectLang(text) {
-  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return 'ja';
-  if (/\p{Script=Han}/u.test(text)) return 'zh';
-  return 'en';
-}
-
-// Picks a chunk's single-language text (see parse-and-index.js for why the
-// languages are kept separate), falling back to English when missing.
-export function chunkText(chunk, lang) {
-  const byLang = { en: chunk.textEn, ja: chunk.textJa, zh: chunk.textZh };
-  return byLang[lang] || chunk.textEn || null;
+// The full system prompt for one message — shared by the bot (messageCreate.js)
+// and scripts/eval-prompts.js so both send exactly the same thing. Validation
+// goes last so the model reads it right before replying.
+export async function buildSystemPrompt(content, topK = 4) {
+  let referenceBlock = '';
+  try {
+    const relevant = (await retrieveRelevant(content, topK)).filter(r => r.text);
+    if (relevant.length > 0) {
+      referenceBlock = `\n\nReference moments from the script that may be relevant here:\n\n${relevant
+        .map(r => `--- ${r.file} (lines ${r.lineStart}-${r.lineEnd}) ---\n${r.text}`)
+        .join('\n\n')}`;
+    }
+  } catch (ragError) {
+    console.warn('⚠️  RAG retrieval failed, continuing without it:', ragError.message);
+  }
+  return `${character.systemPrompt}${referenceBlock}\n\n${character.validation}`;
 }

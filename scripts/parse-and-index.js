@@ -4,21 +4,17 @@
  *
  * Reads every script file in data/scripts/, extracts dialogue for the target
  * character (and her aliases), chunks it with surrounding context, embeds
- * each chunk via Ollama, and writes the result to data/index.json.
- *
- * Each chunk stores its EN/JA/ZH text SEPARATELY — the reference text shown
- * to the model must stay single-language, or the model starts mimicking a
- * bilingual reply format. Embedding uses a combined string across all three
- * purely for multilingual search matching.
+ * each chunk via Ollama, and writes the result to data/index.json. Only the
+ * English columns are used.
  *
  * Usage: node scripts/parse-and-index.js
  */
 
 import 'dotenv/config';
-import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { parseScriptFile, targetAliases, isTargetRow, renderRows } from './lib/script-parser.js';
+import { parseScriptFile, listScriptFiles, targetAliases, isTargetRow, renderRows } from './lib/script-parser.js';
 import { embed } from '../src/rag.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -45,18 +41,14 @@ function buildChunks(rows, file) {
       continue;
     }
 
-    const textEn = renderRows(window, 'en');
-    const textJa = renderRows(window, 'ja');
-    const textZh = renderRows(window, 'zh');
+    const text = renderRows(window);
 
-    if (textEn || textJa || textZh) {
+    if (text) {
       chunks.push({
         file,
         lineStart: window[0].line,
         lineEnd: window[window.length - 1].line,
-        textEn,
-        textJa,
-        textZh,
+        text,
       });
     }
 
@@ -71,7 +63,7 @@ async function main() {
     process.exit(1);
   }
 
-  const files = readdirSync(SCRIPTS_DIR).filter(f => !f.startsWith('.'));
+  const files = listScriptFiles(SCRIPTS_DIR);
   if (files.length === 0) {
     console.error(`❌ No script files found in ${SCRIPTS_DIR}`);
     process.exit(1);
@@ -93,12 +85,9 @@ async function main() {
   const indexed = [];
   for (let i = 0; i < allChunks.length; i++) {
     const chunk = allChunks[i];
-    // Combine all available languages purely for search matching — this
-    // combined string is NEVER shown to the model, only textEn/textJa/textZh are.
-    const embedInput = [chunk.textEn, chunk.textJa, chunk.textZh].filter(Boolean).join(' / ');
 
     try {
-      const embedding = await embed(embedInput);
+      const embedding = await embed(chunk.text);
       indexed.push({ ...chunk, embedding });
     } catch (error) {
       console.error(`⚠️  Failed to embed chunk ${i} (${chunk.file}:${chunk.lineStart}):`, error.message);

@@ -45,7 +45,7 @@ function main() {
 
   const trainingRows = approved.map(ex => ({
     messages: [
-      { role: 'system', content: character.systemPrompt },
+      { role: 'system', content: character.trainingPrompt },
       { role: 'user', content: ex.userMessage },
       { role: 'assistant', content: ex.botReply },
     ],

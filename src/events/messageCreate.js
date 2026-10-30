@@ -1,15 +1,14 @@
 import { Events } from 'discord.js';
 import { character } from '../character.js';
-import { retrieveRelevant, detectLang, chunkText } from '../rag.js';
+import { buildSystemPrompt } from '../rag.js';
+import { chat } from '../llm.js';
 import { logExchange } from '../logger.js';
 
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3:8b';
 const RAG_TOP_K = Number(process.env.RAG_TOP_K || 4);
 
-// Keep history short — every extra message adds context the model has to
-// reprocess on every reply, which slows generation down.
-const MAX_HISTORY = 10;
+// Every extra message adds context the model has to reprocess on every reply.
+// 20 adds well under a second at the ~1,700 tokens/s measured on an RTX 3060.
+const MAX_HISTORY = 20;
 
 // channelId -> [{ role, content }]. In-memory only; resets on bot restart.
 const conversationHistory = new Map();
@@ -74,41 +73,9 @@ export default {
       await message.channel.sendTyping();
 
       // Pull relevant script moments grounded on what the user just said
-      let referenceBlock = '';
-      try {
-        const lang = detectLang(content);
-        const relevant = (await retrieveRelevant(content, RAG_TOP_K))
-          .map(r => ({ ...r, text: chunkText(r, lang) }))
-          .filter(r => r.text);
-        if (relevant.length > 0) {
-          referenceBlock = `\n\nReference moments from the script that may be relevant here:\n\n${relevant
-            .map(r => `--- ${r.file} (lines ${r.lineStart}-${r.lineEnd}) ---\n${r.text}`)
-            .join('\n\n')}`;
-        }
-      } catch (ragError) {
-        console.warn('⚠️  RAG retrieval failed, continuing without it:', ragError.message);
-      }
+      const systemPrompt = await buildSystemPrompt(content, RAG_TOP_K);
 
-      const systemPrompt = character.systemPrompt + referenceBlock;
-
-      const response = await fetch(`${OLLAMA_URL}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: OLLAMA_MODEL,
-          messages: [{ role: 'system', content: systemPrompt }, ...history],
-          stream: false,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Ollama returned HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      const reply = data.message?.content?.trim();
-
-      if (!reply) throw new Error('Empty response from Ollama');
+      const reply = await chat([{ role: 'system', content: systemPrompt }, ...history]);
 
       history.push({ role: 'assistant', content: reply });
       trimHistory(history);
