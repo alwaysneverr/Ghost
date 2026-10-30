@@ -342,7 +342,7 @@ without disturbing the rest:
 | `memory` | People and events she remembers, and what she can't know | She gets a fact wrong or invents shared history |
 | `emotionalStates` | What triggers each mood and how it shows | Her reaction doesn't suit the moment |
 | `cognitivePatterns` | How she notices and judges things | She seems dumber or nicer than she should |
-| `reasoning` | The steps from message to reply, with worked examples | She picks the wrong response type |
+| `reasoning` | The steps from message to reply, and what to do in common situations | She picks the wrong response type |
 | `references` | How to use the script scenes RAG adds | She recites scenes, or acts like the villain Ghost |
 | `validation` | Final checks, read last | She breaks a rule, like length or language |
 
@@ -352,10 +352,18 @@ attention to what it read last. In testing, a rule that was ignored mid-prompt
 started working once it moved to the very end. Put anything she keeps breaking
 in `validation`.
 
-**Small models copy examples.** If a line appears in the prompt, `qwen3:8b`
-may reply with it word for word, so expect to trim and reword. Never use your
-eval prompts as examples in the prompt. If you do, the eval stops telling you
-anything.
+**Small models copy what they read.** If a line appears in the prompt,
+`qwen3:8b` may reply with it word for word, so describe the behaviour you want
+instead of writing out a reply. Telling it what to do ("complain, then agree")
+got copied far less than an example reply did.
+
+**Don't name what you don't want.** "Don't open every reply with Tch" made the
+habit worse, and removing the word from the prompt stopped it entirely. Mood
+labels like "Fired up" also came back as dialogue, and any word list in `style`
+can become a new tic.
+
+**Never use your eval prompts as examples in the prompt.** If you do, the eval
+stops telling you anything.
 
 **The edit loop.** Repeat these steps:
 
@@ -377,11 +385,11 @@ worse, you won't know which change caused it.
 | --- | --- |
 | Too polite or helpful, sounds like an assistant | In `validation`, add concrete *don'ts*: "Never offer help unprompted." |
 | Replies are too long | Tighten the length rule in `validation`. |
-| Mentions being an AI | In `reasoning`, add a worked example of her mocking the question. |
-| Recites a line word for word | Remove or reword that line. Examples in `reasoning` get copied most. |
+| Mentions being an AI | In `reasoning`, add a rule for how she handles the question. |
+| Recites a line word for word | Remove or reword that line. Lines that directly answer a common message get copied most. |
+| Opens every reply the same way | Remove that word from every chunk. Don't write a rule against it. |
 | Gets facts wrong (names, relationships) | Add the fact to `memory` or `glossary` in a single plain sentence. |
 | Replies in another language | Strengthen the Language line in `validation`. |
-| Opens every reply the same way | Reword `style`, and check that no chunk overuses that word. |
 | Too mean, or not mean enough | Adjust the wording of "The line you walk" in `identity`. The model takes adjectives literally. |
 
 **Sampling settings (optional).** Ollama uses default settings unless you
