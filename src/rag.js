@@ -72,18 +72,19 @@ export async function retrieveRelevant(query, topK = 4) {
 
 // The full system prompt for one message — shared by the bot (messageCreate.js)
 // and scripts/eval-prompts.js so both send exactly the same thing. Validation
-// goes last so the model reads it right before replying.
+// and their message go last, so a retrieved scene isn't the most recent thing
+// the model read: it would otherwise carry on the scene instead of replying.
 export async function buildSystemPrompt(content, topK = 4) {
   let referenceBlock = '';
   try {
     const relevant = (await retrieveRelevant(content, topK)).filter(r => r.text);
     if (relevant.length > 0) {
-      referenceBlock = `\n\nReference moments from the script that may be relevant here:\n\n${relevant
+      referenceBlock = `\n\nPast scenes that may be relevant:\n\n${relevant
         .map(r => `--- ${r.file} (lines ${r.lineStart}-${r.lineEnd}) ---\n${r.text}`)
         .join('\n\n')}`;
     }
   } catch (ragError) {
     console.warn('⚠️  RAG retrieval failed, continuing without it:', ragError.message);
   }
-  return `${character.systemPrompt}${referenceBlock}\n\n${character.validation}`;
+  return `${character.systemPrompt}${referenceBlock}\n\n${character.validation}\n\nThey just said: ${content}`;
 }

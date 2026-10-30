@@ -15,6 +15,17 @@ const OLLAMA_THINK = process.env.OLLAMA_THINK === 'true';
 // silently drop content. 16384 uses about 7.5 GB of VRAM on qwen3:8b.
 const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX || 16384);
 
+// Hard limit on reply length, roughly 65 words. Prompt rules alone didn't stop
+// the model writing essays when asked. Thinking uses up the same budget, so the
+// limit only applies with thinking off.
+const OLLAMA_MAX_REPLY_TOKENS = Number(process.env.OLLAMA_MAX_REPLY_TOKENS || 90);
+
+// A reply cut off at the limit would end mid-sentence, so end it at the last
+// complete one. Left alone if it has none.
+function trimToLastSentence(text) {
+  return text.match(/^[\s\S]*[.!?…]["”']?(?=\s|$)/)?.[0] ?? text;
+}
+
 // messages: [{ role: 'system' | 'user' | 'assistant', content }]
 export async function chat(messages, model = OLLAMA_MODEL) {
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
@@ -25,7 +36,10 @@ export async function chat(messages, model = OLLAMA_MODEL) {
       messages,
       stream: false,
       think: OLLAMA_THINK,
-      options: { num_ctx: OLLAMA_NUM_CTX },
+      options: {
+        num_ctx: OLLAMA_NUM_CTX,
+        ...(OLLAMA_THINK ? {} : { num_predict: OLLAMA_MAX_REPLY_TOKENS }),
+      },
     }),
   });
 
@@ -37,5 +51,5 @@ export async function chat(messages, model = OLLAMA_MODEL) {
   const reply = data.message?.content?.trim();
 
   if (!reply) throw new Error('Empty response from Ollama');
-  return reply;
+  return data.done_reason === 'length' ? trimToLastSentence(reply) : reply;
 }

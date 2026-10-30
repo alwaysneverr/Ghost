@@ -84,6 +84,7 @@ OLLAMA_MODEL=qwen3:8b               # chat model (set to your fine-tune later)
 OLLAMA_EMBED_MODEL=bge-m3           # must match the model the index was built with
 OLLAMA_THINK=false                  # Qwen3 "thinking" before replies (slow; off for chat)
 OLLAMA_NUM_CTX=16384                # context window; must fit persona + references + history
+OLLAMA_MAX_REPLY_TOKENS=90          # hard limit on reply length, about 65 words
 RAG_TOP_K=4                         # script chunks injected per reply
 
 # SCRIPT_TARGET_ALIASES=Ghost,Lena  # override character.aliases for the scripts
@@ -360,7 +361,20 @@ got copied far less than an example reply did.
 **Don't name what you don't want.** "Don't open every reply with Tch" made the
 habit worse, and removing the word from the prompt stopped it entirely. Mood
 labels like "Fired up" also came back as dialogue, and any word list in `style`
-can become a new tic.
+can become a new tic. The same goes for rule wording: "Shut it down" and
+"Secrets." both came back word for word, so write rules as plain sentences with
+nothing catchy to repeat.
+
+**Retrieved scenes can hijack a reply.** If a scene ends near a short line, she
+may carry on the scene instead of answering. "Go grab me a drink" retrieves a
+soda-fountain scene and often gets "I know." from it. That's why the prompt ends
+with the person's message. It's also why a bad reply is worth checking with
+`npm run rag:check`.
+
+**Know when to stop editing the prompt.** Some things didn't respond to any
+wording. Reply length needed a limit in code (`OLLAMA_MAX_REPLY_TOKENS`). "Ain't"
+as an opener isn't in the prompt at all and is rare in her real lines, so it's
+the model's own habit. That's the kind of thing fine-tuning (Level C) is for.
 
 **Never use your eval prompts as examples in the prompt.** If you do, the eval
 stops telling you anything.
@@ -384,7 +398,7 @@ worse, you won't know which change caused it.
 | Symptom in the eval | What to change in the prompt |
 | --- | --- |
 | Too polite or helpful, sounds like an assistant | In `validation`, add concrete *don'ts*: "Never offer help unprompted." |
-| Replies are too long | Tighten the length rule in `validation`. |
+| Replies are too long | Lower `OLLAMA_MAX_REPLY_TOKENS` in `.env`. Replies are trimmed back to the last full sentence. |
 | Mentions being an AI | In `reasoning`, add a rule for how she handles the question. |
 | Recites a line word for word | Remove or reword that line. Lines that directly answer a common message get copied most. |
 | Opens every reply the same way | Remove that word from every chunk. Don't write a rule against it. |
@@ -979,5 +993,7 @@ Ideas that fit the current architecture, roughly in order of payoff.
   reply, so the next request has two user turns in a row.
 - `/remind` reminders don't survive a restart.
 - The bot is English-only: messages in other languages get English replies.
+- Replies stop at about 65 words, so she can't deliver a long rant even when
+  it would suit the moment. Raise `OLLAMA_MAX_REPLY_TOKENS` to allow it.
 - About 74 Prettier formatting errors remain in the existing code. They're
   formatting only — run `npx eslint . --fix` to apply them.
