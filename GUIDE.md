@@ -385,6 +385,19 @@ wording. Reply length needed a limit in code (`OLLAMA_MAX_REPLY_TOKENS`). "Ain't
 as an opener isn't in the prompt at all and is rare in her real lines, so it's
 the model's own habit. That's the kind of thing fine-tuning (Level C) is for.
 
+**Test whole conversations, not just single messages.** `npm run eval` sends one
+message at a time, so it can't see her repeating herself. The worst cycling came
+from code, not the prompt: when history filled up it could open on one of her
+replies, and from then on she replayed the conversation. So chat with her for 15
+or 20 messages before trusting a change. `src/llm.js` now also regenerates a
+reply that repeats an earlier one, or copies a sentence from the prompt.
+
+**Situations go in code, not the prompt.** Favours, requests for long writing,
+and questions about secrets each get a short hint at the very end of the prompt,
+only when the message matches (`situations` in `src/character.js`). Scenes are
+left out for those messages. If she keeps mishandling a clear type of message,
+add a situation with a hint that says what she does.
+
 **Some messages shouldn't reach the persona at all.** When someone is grieving or
 wants to die, `src/safety.js` takes over before the prompt matters:
 
@@ -428,19 +441,24 @@ worse, you won't know which change caused it.
 | Replies in another language | Strengthen the Language line in `validation`. |
 | Too mean, or not mean enough | Adjust the wording of "The line you walk" in `identity`. The model takes adjectives literally. |
 
-**Sampling settings (optional).** Ollama uses default settings unless you
-build a custom model with different ones. Create a file called `Modelfile`
-(no extension) in the project folder:
+**Sampling settings (optional).** These control how the model picks words. The
+bot sends them with every request from `.env`, so they override anything in a
+Modelfile. `qwen3:8b` ships tuned for accuracy (temperature 0.6, `top_k` 20, no
+repetition penalty), which is too stiff for chat, so the bot's defaults differ:
 
-```dockerfile
-FROM qwen3:8b
-PARAMETER temperature 0.8      # 0.6 = steadier, 1.0 = wilder. Stay between 0.5 and 1.1
-PARAMETER top_p 0.9            # only pick from the most likely words. 0.8–0.95 is normal
-PARAMETER repeat_penalty 1.1   # discourages repeating itself. 1.05–1.2
-```
+| `.env` setting | Default | What it does |
+| --- | --- | --- |
+| `OLLAMA_TEMPERATURE` | 0.85 | Randomness. Lower is steadier; higher gets wilder and meaner. |
+| `OLLAMA_TOP_K` | 40 | How many candidate words it considers. |
+| `OLLAMA_TOP_P` | 0.95 | Keeps only the likeliest words. 0.8–0.95 is normal. |
+| `OLLAMA_REPEAT_PENALTY` | 1.15 | Discourages repeating words. 1 turns it off; 1.05–1.2 is normal. |
+| `OLLAMA_REPEAT_LAST_N` | 256 | How far back the penalty looks, in tokens. It needs to reach her recent replies. |
 
-**Context window.** This one isn't set in the Modelfile: the bot sends
-`OLLAMA_NUM_CTX` (default 16384) with every request, which overrides it.
+If she gets too harsh or starts rambling, lower `OLLAMA_TEMPERATURE` first. To
+try a value for one eval, set it just for that run:
+`$env:OLLAMA_TEMPERATURE='0.7'; npm run eval`
+
+**Context window.** The bot sends `OLLAMA_NUM_CTX` (default 16384) the same way.
 Ghost's prompt plus four script references comes to about 3,700 tokens before
 any chat history. Ollama's default here was only 4096, and when text doesn't
 fit, content gets dropped silently. Measured on an RTX 3060 12 GB, whole card,
@@ -454,18 +472,6 @@ so the numbers move a little with whatever else is loaded:
 
 A bigger window is headroom only. It doesn't improve replies by itself, and
 16384 is already far more than Ghost currently fills.
-
-Then build the custom model, check it, and test it:
-
-```powershell
-ollama create ghost-base -f Modelfile   # build a model named ghost-base
-ollama show ghost-base                  # confirm the parameters took
-npm run eval -- ghost-base              # compare with your qwen3:8b eval
-```
-
-If it's better, set `OLLAMA_MODEL=ghost-base` in `.env` and restart the bot.
-Don't add a `SYSTEM` line to this Modelfile: the bot sends its own system
-prompt with every message, and that replaces it.
 
 **Thinking mode.** Qwen3 can "think" silently before it answers. That's
 useful for maths, but for chat it only adds seconds of delay. It's off by
@@ -868,10 +874,9 @@ Qwen3's, or the model will ramble or print gibberish.
    ...paste Qwen3's template here...
    """
    PARAMETER stop "<|im_end|>"     # use the stop lines from step 1
-
-   PARAMETER temperature 0.8
-   PARAMETER num_ctx 8192
    ```
+   There's no need for other `PARAMETER` lines here: the bot sends its own
+   sampling settings from `.env`, and those override the Modelfile.
 3. **Build it and say hi:**
    ```powershell
    cd finetune

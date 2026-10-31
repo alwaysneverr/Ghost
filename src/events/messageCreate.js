@@ -1,7 +1,7 @@
 import { Events } from 'discord.js';
 import { character } from '../character.js';
 import { buildSystemPrompt } from '../rag.js';
-import { chat } from '../llm.js';
+import { chatFresh } from '../llm.js';
 import { logExchange } from '../logger.js';
 import { isCrisis, inCrisis, needsGentleReply } from '../safety.js';
 
@@ -13,6 +13,11 @@ const MAX_HISTORY = 20;
 
 // channelId -> [{ role, content }]. In-memory only; resets on bot restart.
 const conversationHistory = new Map();
+
+// channelId -> her replies, reaching further back than the history the model
+// sees, so she can't repeat something once it has scrolled out of that.
+const pastReplies = new Map();
+const MAX_PAST_REPLIES = 50;
 
 // History must never open on one of her replies: when it did, the model repeated
 // that reply, so from the point history filled up she replayed the conversation.
@@ -90,7 +95,11 @@ export default {
         reply = isCrisis(content) ? character.crisisReply : character.crisisFollowUp;
       } else {
         const systemPrompt = await buildSystemPrompt(content, RAG_TOP_K, userMessages);
-        reply = await chat([{ role: 'system', content: systemPrompt }, ...history]);
+        const past = pastReplies.get(channelId) ?? [];
+        reply = await chatFresh([{ role: 'system', content: systemPrompt }, ...history], {
+          pastReplies: past,
+        });
+        pastReplies.set(channelId, [...past, reply].slice(-MAX_PAST_REPLIES));
       }
 
       history.push({ role: 'assistant', content: reply });

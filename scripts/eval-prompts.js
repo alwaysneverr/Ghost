@@ -13,7 +13,7 @@ import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { buildSystemPrompt } from '../src/rag.js';
-import { chat } from '../src/llm.js';
+import { chatFresh } from '../src/llm.js';
 import { character } from '../src/character.js';
 import { isCrisis } from '../src/safety.js';
 
@@ -64,7 +64,9 @@ async function main() {
         reply = character.crisisReply;
       } else {
         const systemPrompt = await buildSystemPrompt(prompt, RAG_TOP_K);
-        reply = await chat([{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], MODEL);
+        reply = await chatFresh([{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], {
+          model: MODEL,
+        });
       }
     } catch (error) {
       reply = `❌ ERROR: ${error.message}`;

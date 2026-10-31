@@ -79,9 +79,12 @@ export async function retrieveRelevant(query, topK = 4) {
 export async function buildSystemPrompt(content, topK = 4, userMessages = [content]) {
   if (needsGentleReply(userMessages)) return character.griefPrompt;
 
+  const situation = character.situations.find(s => s.match.test(content));
+  const hint = situation ? `\n${situation.hint}` : '';
+
   let referenceBlock = '';
   try {
-    const relevant = (await retrieveRelevant(content, topK)).filter(r => r.text);
+    const relevant = situation ? [] : (await retrieveRelevant(content, topK)).filter(r => r.text);
     if (relevant.length > 0) {
       referenceBlock = `\n\nPast scenes that may be relevant:\n\n${relevant
         .map(r => `--- ${r.file} (lines ${r.lineStart}-${r.lineEnd}) ---\n${r.text}`)
@@ -90,5 +93,5 @@ export async function buildSystemPrompt(content, topK = 4, userMessages = [conte
   } catch (ragError) {
     console.warn('⚠️  RAG retrieval failed, continuing without it:', ragError.message);
   }
-  return `${character.systemPrompt}${referenceBlock}\n\n${character.validation}\n\nThey just said: ${content}`;
+  return `${character.systemPrompt}${referenceBlock}\n\n${character.validation}\n\nThey just said: ${content}${hint}`;
 }
