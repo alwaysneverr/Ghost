@@ -4,6 +4,8 @@ import { buildSystemPrompt } from '../rag.js';
 import { chatFresh } from '../llm.js';
 import { logExchange } from '../logger.js';
 import { isCrisis, inCrisis, needsGentleReply } from '../safety.js';
+import { getChannel, getFacts, saveChannel } from '../store.js';
+import { MEMORY_ENABLED, rememberFrom } from '../memory.js';
 
 const RAG_TOP_K = Number(process.env.RAG_TOP_K || 4);
 
@@ -11,13 +13,12 @@ const RAG_TOP_K = Number(process.env.RAG_TOP_K || 4);
 // 20 adds well under a second at the ~1,700 tokens/s measured on an RTX 3060.
 const MAX_HISTORY = 20;
 
-// channelId -> [{ role, content }]. In-memory only; resets on bot restart.
-const conversationHistory = new Map();
-
-// channelId -> her replies, reaching further back than the history the model
-// sees, so she can't repeat something once it has scrolled out of that.
-const pastReplies = new Map();
+// Her replies reach further back than the history the model sees, so she can't
+// repeat something once it has scrolled out of that.
 const MAX_PAST_REPLIES = 50;
+
+// How many things she remembers about someone go into the prompt at once.
+const MAX_REMEMBERED = 5;
 
 // History must never open on one of her replies: when it did, the model repeated
 // that reply, so from the point history filled up she replayed the conversation.
@@ -77,9 +78,12 @@ export default {
     if (!content) return; // empty DM (attachment only, etc.) — nothing to respond to
 
     const channelId = message.channel.id;
-    const history = conversationHistory.get(channelId) ?? [];
+    const channel = getChannel(channelId);
+    const { history } = channel;
+    const scope = message.guildId ?? 'dm';
 
-    history.push({ role: 'user', content });
+    const theirMessage = { role: 'user', content };
+    history.push(theirMessage);
     trimHistory(history);
 
     try {
@@ -101,19 +105,19 @@ export default {
       if (inCrisis(userMessages)) {
         reply = isCrisis(content) ? character.crisisReply : character.crisisFollowUp;
       } else {
-        const { prompt, factual } = await buildSystemPrompt(content, RAG_TOP_K, userMessages);
-        const past = pastReplies.get(channelId) ?? [];
+        const remembered = MEMORY_ENABLED ? getFacts(message.author.id, scope, MAX_REMEMBERED) : [];
+        const { prompt, factual } = await buildSystemPrompt(content, RAG_TOP_K, userMessages, remembered);
         reply = await chatFresh([{ role: 'system', content: prompt }, ...history], {
-          pastReplies: past,
+          pastReplies: channel.pastReplies,
           factual,
         });
         if (!needsGentleReply(userMessages)) reply = maybeAddName(reply);
-        pastReplies.set(channelId, [...past, reply].slice(-MAX_PAST_REPLIES));
+        channel.pastReplies = [...channel.pastReplies, reply].slice(-MAX_PAST_REPLIES);
       }
 
       history.push({ role: 'assistant', content: reply });
       trimHistory(history);
-      conversationHistory.set(channelId, history);
+      saveChannel(channelId);
 
       // Discord caps messages at 2000 characters
       const sent = await message.reply(reply.slice(0, 2000));
@@ -133,7 +137,13 @@ export default {
       // Let people mark good/bad replies for later fine-tuning curation
       sent.react('👍').catch(() => {});
       sent.react('👎').catch(() => {});
+
+      rememberFrom(message.author.id, scope, content);
     } catch (error) {
+      // She never answered it, so it mustn't sit in history as an unanswered message.
+      const unanswered = history.lastIndexOf(theirMessage);
+      if (unanswered >= 0 && history[unanswered + 1]?.role !== 'assistant') history.splice(unanswered, 1);
+
       console.error('❌ Chat error:', error);
       try {
         await message.reply(`❌ ${character.name} isn't responding — check that Ollama is running and reachable on the workstation.`);

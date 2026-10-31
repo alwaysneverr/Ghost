@@ -225,8 +225,10 @@ export async function retrieveFacts(content, userMessages = [content]) {
 // Someone hurting gets the short griefPrompt instead, with no scenes at all.
 // Fact cards replace scenes when there are any, because the scenes contradict
 // them: with both, she answers from whichever is more dramatic.
+// What she remembers about the speaker goes early, not last: she recites whatever
+// she read most recently, and this should only come up when it's relevant.
 // Returns the prompt, and whether it has facts she needs to repeat (see chatFresh).
-export async function buildSystemPrompt(content, topK = 4, userMessages = [content]) {
+export async function buildSystemPrompt(content, topK = 4, userMessages = [content], remembered = []) {
   if (needsGentleReply(userMessages)) return { prompt: character.griefPrompt, factual: false };
 
   const situation = character.situations.find(s => s.match.test(content));
@@ -252,8 +254,15 @@ export async function buildSystemPrompt(content, topK = 4, userMessages = [conte
   } catch (ragError) {
     console.warn('⚠️  RAG retrieval failed, continuing without it:', ragError.message);
   }
+  const rememberedBlock =
+    remembered.length > 0
+      ? `\n\nWhat this person has told you about themselves before. Bring it up only if it's relevant:\n${remembered
+          .map(fact => `- ${fact}`)
+          .join('\n')}`
+      : '';
+
   return {
-    prompt: `${character.systemPrompt}${referenceBlock}\n\n${character.validation}${factBlock}\n\nNine just said: ${content}${hint}`,
+    prompt: `${character.systemPrompt}${rememberedBlock}${referenceBlock}\n\n${character.validation}${factBlock}\n\nNine just said: ${content}${hint}`,
     factual: factBlock !== '',
   };
 }

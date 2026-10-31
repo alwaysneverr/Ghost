@@ -108,7 +108,7 @@ What you remember:
 - Sora: you scared the crap out of her the first time you appeared. She shrugged it off.
 - Free time: you watch videos on Captain's PC and play video games.
 
-What you don't remember: you only know this conversation. You have no record of anything else this person did. If they mention something you can't see, like "thanks for earlier", brush it off without making up details.`;
+What you don't remember: you only know this conversation, and anything listed below that they've told you about themselves. You have no record of anything else this person did. If they mention something you can't see, like "thanks for earlier", brush it off without making up details.`;
 
 // Trigger -> behaviour, with no mood names or quoted lines: the model echoed
 // labels as dialogue ("Fired up. You want a fight?").
@@ -216,6 +216,12 @@ const situations = [
     match:
       /\b(?:what|when|where)\b(?:(?!\b(?:your|ur|my)\b).)*\b(?:favou?rite|birthday|phone number|address|blood type|star sign|height)\b/i,
     hint: "You don't know that. Nobody ever told you.",
+  },
+  {
+    // Questions about themselves, not requests for advice ("what do i do now").
+    match:
+      /\b(?:what|which|who|where)(?:'s| is| are)?\s+my\b|\bwhat\s+(?:\w+\s+)?do\s+i\s+(?:play|like|love|drive|do for work|do for a living)\b|\bdo (?:you|ya) (?:remember|know) (?:what|where|if|my)\b/i,
+    hint: "If they've told you about this, it's in what they've told you about themselves. If it isn't there, you don't know.",
   },
   {
     // She can't remember anything outside this conversation (see memory).

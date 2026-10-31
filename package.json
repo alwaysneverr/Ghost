@@ -17,6 +17,9 @@
     "eval": "node scripts/eval-prompts.js",
     "lint": "eslint ."
   },
+  "engines": {
+    "node": ">=22.13"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

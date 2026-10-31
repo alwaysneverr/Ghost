@@ -20,6 +20,8 @@ const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX || 16384);
 // limit only applies with thinking off.
 const OLLAMA_MAX_REPLY_TOKENS = Number(process.env.OLLAMA_MAX_REPLY_TOKENS || 90);
 
+const JSON_MAX_TOKENS = 120;
+
 // How the model picks words. qwen3:8b ships tuned for accuracy (temperature 0.6,
 // top_k 20, no repetition penalty at all), and she repeated herself within a few
 // messages. repeat_last_n has to reach back over her recent replies to help.
@@ -120,6 +122,31 @@ export async function chatFresh(messages, { model = OLLAMA_MODEL, pastReplies = 
     ];
   }
   return best;
+}
+
+// For the model as a tool, not as her: a JSON answer matching schema, with no
+// randomness. Same num_ctx as chat(), since a different one makes Ollama reload
+// the model, which would stall the next reply.
+export async function chatJson(messages, schema, model = OLLAMA_MODEL) {
+  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages,
+      stream: false,
+      think: false,
+      format: schema,
+      options: { temperature: 0, num_ctx: OLLAMA_NUM_CTX, num_predict: JSON_MAX_TOKENS },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ollama returned HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  return JSON.parse(data.message?.content ?? '{}');
 }
 
 // messages: [{ role: 'system' | 'user' | 'assistant', content }]
