@@ -19,12 +19,14 @@ fine-tuning the local Ollama model (`qwen3:8b` by default).
 Discord message (DM or @mention)
   └─ src/events/messageCreate.js
        ├─ bare ping?            → canned in-character rant, no LLM
+       ├─ src/store.js          → this channel's recent conversation, from memory or data/ghost.db
        ├─ src/safety.js         → crisis: fixed text, no LLM. Grief: short gentle prompt, no RAG
-       ├─ src/rag.js            → embed message with bge-m3, cosine-search data/index.json
-       ├─ system prompt          = src/character.js persona + retrieved script moments
+       ├─ src/rag.js            → fact cards if the message is about the story, otherwise script scenes
+       ├─ system prompt          = src/character.js persona + what she remembers + cards or scenes
        ├─ Ollama /api/chat      → qwen3:8b (or your fine-tuned model)
        ├─ reply + 👍/👎 reactions
-       └─ src/logger.js         → data/logs/conversations.jsonl
+       ├─ src/logger.js         → data/logs/conversations.jsonl
+       └─ src/memory.js         → afterwards: keeps any lasting facts they said about themselves
 Reaction on a bot reply
   └─ src/events/messageReactionAdd.js → logs the rating to the same JSONL
 ```
@@ -33,17 +35,24 @@ Reaction on a bot reply
 | --- | --- |
 | `src/index.js` | Client setup; auto-loads everything in `commands/` and `events/` |
 | `src/deploy-commands.js` | Registers slash commands with Discord |
-| `src/commands/*.js` | `/dm`, `/hello`, `/ping`, `/quote`, `/remind` |
+| `src/commands/*.js` | `/dm`, `/hello`, `/memory`, `/ping`, `/quote`, `/remind` |
 | `src/events/*.js` | Ready, interaction routing, chat, rating capture |
 | `src/character.js` | Persona: name, aliases, system prompt |
 | `src/rag.js` | Index loading, embedding, retrieval, building the full system prompt |
+| `src/rerank.js` | Optional second pass over retrieved scenes (`RAG_RERANK=true`) |
 | `src/llm.js` | The one call to Ollama's chat API |
+| `src/streamReply.js` | Optional live-updating replies (`STREAM_REPLIES=true`) |
+| `src/store.js` | SQLite: channel history and remembered facts (`data/ghost.db`) |
+| `src/memory.js` | Decides which facts about a person are kept |
 | `src/safety.js` | Spots crisis and grief messages, which the normal persona must not answer |
 | `src/logger.js` | Exchange/rating JSONL log |
 | `scripts/lib/script-parser.js` | Script table parser + shared helpers |
+| `scripts/lib/ratings.js` | Reads the log and works out each reply's net rating |
 | `scripts/parse-and-index.js` | Builds `data/index.json` (RAG) |
 | `scripts/export-script-training-data.js` | Script dialogue → fine-tuning JSONL |
 | `scripts/export-training-data.js` | 👍-rated logs → fine-tuning JSONL |
+| `scripts/export-combined-training-data.js` | Merges the two above, without duplicates |
+| `scripts/export-preference-data.js` | 👍 and 👎 ratings → preference-tuning JSONL |
 | `scripts/eval-prompts.js` | `npm run eval`: fixed test prompts → `data/evals/` |
 | `scripts/rag-check.js` | `npm run rag:check`: shows what RAG retrieves for a message |
 
@@ -56,7 +65,8 @@ weights are huge. You bring your own (see below).
 
 ### Prerequisites
 
-- **Node.js 20+** (developed on 22)
+- **Node.js 22.13+**, for the built-in SQLite. It prints an "experimental"
+  warning at startup, which is harmless.
 - **[Ollama](https://ollama.com)** running somewhere the bot can reach
 - The models:
   ```sh
@@ -89,6 +99,13 @@ OLLAMA_NUM_CTX=16384                # context window; must fit persona + referen
 OLLAMA_MAX_REPLY_TOKENS=90          # hard limit on reply length, about 65 words
 RAG_TOP_K=4                         # script chunks injected per reply
 
+# GHOST_DB_PATH=data/ghost.db       # where history and remembered facts are stored
+# HISTORY_MAX_AGE_HOURS=24          # conversations older than this are deleted
+# MEMORY_FACTS=false                # stop remembering facts about people
+# RAG_HYBRID=true                   # add keyword search to scene retrieval (§4.3)
+# RAG_RERANK=true                   # rerank scenes on the CPU; slow, see §4.3
+# STREAM_REPLIES=true               # edit replies in as they're written (§5)
+
 # SCRIPT_TARGET_ALIASES=Ghost,Lena  # override character.aliases for the scripts
 ```
 
@@ -114,11 +131,29 @@ without script grounding.
 ### Using it
 
 - **Chat:** DM the bot, or @mention it in a server. History is kept per
-  channel (last 20 messages, in memory). She only replies in English.
+  channel (last 20 messages), survives restarts, and is deleted after 24 hours
+  without a reply. She only replies in English.
 - **Rate replies:** react 👍/👎 on its replies. These ratings feed
-  `npm run export:logs` (§4).
+  `npm run export:logs` and `npm run export:preference` (§4).
 - **Slash commands:** `/ping`, `/hello`, `/quote`, `/remind <minutes> <reason>`,
-  `/dm <user> <message>`.
+  `/dm <user> <message>`, `/memory show`, `/memory forget`.
+
+### What she remembers about people
+
+She keeps short facts people state about themselves, like "has a cat named
+mochi", in `data/ghost.db` on your machine. **If you run this in a server, tell
+your members.** They can check and wipe what she has with `/memory`, and
+`MEMORY_FACTS=false` turns it off for everyone.
+
+- A fact stays where it was said: a server's facts never appear in DMs or another
+  server, and DM facts never appear in a server.
+- Nothing is kept from grief or crisis messages.
+- Health, contact details, money, identity and age are filtered out by pattern
+  matching, which will miss some wording. It's a safety net, not a guarantee.
+- `/memory forget` deletes facts, not the channel's recent conversation, which is
+  shared and expires by itself after 24 hours.
+- A crisis or grief message does sit in the channel's history on disk for up to
+  24 hours, so that the crisis handling survives a restart.
 
 ---
 
@@ -592,6 +627,25 @@ more like her, without quoting the script word for word.
 | `CHUNK_STRIDE` (7) | same file | — | Lower it to get more overlap between scenes |
 | `OLLAMA_EMBED_MODEL` (`bge-m3`) | `.env` | Any Ollama embedding model works; `bge-m3` is already good for English | — |
 
+**Two optional retrieval upgrades, both off by default.** Tested on 26 queries
+written from randomly sampled lines of hers, fixed before any run:
+
+| Setup | Right scene in top 4 | Rank quality (MRR) | Added per message | RAM |
+| --- | --- | --- | --- | --- |
+| Embeddings (default) | 17 of 26 | 0.48 | — | — |
+| `RAG_HYBRID=true` (adds keyword search) | 17 of 26 | 0.48 | almost nothing | almost nothing |
+| `RAG_RERANK=true` (cross-encoder on CPU) | 18 of 26 | 0.65 | about 3.3 seconds | about 1.8 GB |
+
+- **Hybrid** made no difference on those queries. It did on an earlier set of 30
+  picked by hand (19 → 24), which leaned towards distinctive words and
+  catchphrases. So it's worth turning on if people quote the story at her, and it
+  costs almost nothing.
+- **Reranking** orders scenes better but rarely finds new ones, and all the scenes
+  go into the prompt anyway. Ollama has no rerank endpoint, so it runs on the CPU,
+  which makes it far too slow for chat. It needs
+  `npm install @huggingface/transformers` (included as an optional dependency), and
+  downloads about 570 MB to `data/models/` on first use.
+
 **Re-run `npm run index`** after any of these:
 
 - You add or change script files.
@@ -1000,7 +1054,116 @@ prompt by prompt.
   on, so you can compare rounds with `npm run eval -- ghost-v1`. Delete old
   ones with `ollama rm`.
 - **The long-term loop:** people rate replies on Discord, then you run
-  `export:logs`, combine the files, retrain, evaluate and switch.
+  `export:logs` and `export:combined`, retrain, evaluate and switch.
+
+#### C7. Preference tuning with 👍 and 👎 (optional)
+
+The LoRA only learns from replies people liked. **KTO** also learns from the ones
+they disliked, nudging her towards one and away from the other. Do this after C3,
+and only once you have plenty of ratings. It starts from your `ghost-lora` adapter.
+
+> **Don't train on a handful of ratings.** Aim for at least 200, with a healthy mix
+> of 👍 and 👎. With fewer, it memorises those exact replies instead of learning
+> what people like.
+
+**Step 1 — Export the ratings.** A reply counts as liked or disliked by its net
+votes, using each person's latest vote. Ties are dropped.
+
+```powershell
+npm run export:preference   # → data/preference-data.jsonl
+```
+
+Each line has a prompt, her reply, and a `label` of `true` or `false`:
+
+```json
+{"prompt":[{"role":"system","content":"…"},{"role":"user","content":"hey"}],"completion":[{"role":"assistant","content":"What?"}],"label":false}
+```
+
+**Step 2 — Save this as `finetune\train_kto.py`.**
+
+```python
+import os
+
+# Unsloth patches transformers, so it has to be imported before trl.
+from unsloth import FastLanguageModel
+from datasets import load_dataset
+from trl import KTOConfig, KTOTrainer
+
+BASE_MODEL = "unsloth/Qwen3-8B-unsloth-bnb-4bit"
+DATASET_PATH = "../data/preference-data.jsonl"
+START_FROM = os.environ.get("KTO_START_FROM", "./ghost-lora")
+OUTPUT_DIR = "./ghost-kto"
+MAX_SEQ_LENGTH = 2048
+MAX_STEPS = int(os.environ.get("KTO_MAX_STEPS", "-1"))
+
+has_adapter = os.path.isdir(START_FROM)
+print(f"Starting from {START_FROM if has_adapter else BASE_MODEL}")
+
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name=START_FROM if has_adapter else BASE_MODEL,
+    max_seq_length=MAX_SEQ_LENGTH,
+    load_in_4bit=True,
+)
+if not has_adapter:
+    model = FastLanguageModel.get_peft_model(
+        model,
+        r=16,
+        lora_alpha=32,
+        lora_dropout=0,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        use_gradient_checkpointing="unsloth",
+    )
+
+dataset = load_dataset("json", data_files=DATASET_PATH, split="train")
+liked = sum(dataset["label"])
+disliked = len(dataset) - liked
+print(f"{len(dataset)} rated replies: {liked} liked, {disliked} disliked")
+if liked == 0 or disliked == 0:
+    raise SystemExit("KTO needs both liked and disliked replies. Collect more ratings first.")
+
+trainer = KTOTrainer(
+    model=model,
+    args=KTOConfig(
+        output_dir=OUTPUT_DIR,
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=2,
+        num_train_epochs=1,
+        max_steps=MAX_STEPS,
+        learning_rate=5e-5,  # far lower than the LoRA's: it's a nudge, not a rewrite
+        max_length=MAX_SEQ_LENGTH,
+        # So whichever rating is more common doesn't dominate.
+        desirable_weight=min(liked, disliked) / liked,
+        undesirable_weight=min(liked, disliked) / disliked,
+        logging_steps=1,
+        save_strategy="no",
+        report_to="none",
+    ),
+    train_dataset=dataset,
+    processing_class=tokenizer,
+)
+
+trainer.train()
+model.save_pretrained(OUTPUT_DIR)
+tokenizer.save_pretrained(OUTPUT_DIR)
+```
+
+**Step 3 — Train.** Quit Ollama first, because it holds VRAM. `$env:KTO_MAX_STEPS=3`
+stops after 3 steps, which is a quick way to check that everything runs.
+
+```powershell
+cd finetune
+python train_kto.py
+```
+
+**Step 4 — Use it.** Export a GGUF from `ghost-kto` the way C3 does for the LoRA,
+then follow C4 and C5.
+
+**How far this has been tested:** with TRL 1.15 and Unsloth 2026.10, the script ran
+3 steps on real ratings, both from the base model and from an existing adapter, and
+saved an adapter (about 90 seconds on an RTX 3060). That proves it runs. With only
+10 ratings available, nobody has seen whether it improves her, and the GGUF export
+from `ghost-kto` hasn't been tried. Judge the result with C5 as you would any
+fine-tune, and keep the plain LoRA to roll back to.
 
 **Troubleshooting Level C**
 
@@ -1023,11 +1186,9 @@ Ideas that fit the current architecture, roughly in order of payoff.
 
 ### Training and model quality
 
-- **Preference tuning (DPO/KTO).** 👎 ratings are already logged but unused —
-  `export:logs` keeps only 👍. KTO works directly on thumbs-up/down labels.
-  DPO needs pairs, which you could get by generating 2–3 replies per prompt
-  and having raters pick one. TRL has `DPOTrainer` and `KTOTrainer`, and
-  Unsloth supports both.
+- **DPO.** KTO (C7) learns from 👍 and 👎 on single replies. DPO learns from pairs,
+  which you could get by generating 2–3 replies per prompt and having raters
+  pick one. TRL has a `DPOTrainer`.
 - **Hold-out split and eval script.** Export a fixed held-out set, run both
   models over it through Ollama, and score with an LLM-as-judge prompt.
   Score persona fit and staying in character.
@@ -1043,11 +1204,10 @@ Ideas that fit the current architecture, roughly in order of payoff.
 
 ### Retrieval
 
-- **Hybrid search for scenes.** Fact cards already combine names and embeddings
-  (§4.3). Scene retrieval could do the same with BM25 / keyword scoring, for
-  names and catchphrases that embeddings blur.
-- **Reranking.** Retrieve ~20 chunks and rerank with a cross-encoder (e.g.
-  `bge-reranker-v2-m3`) down to `RAG_TOP_K`.
+- **Faster reranking.** `RAG_RERANK` works but takes about 3.3 seconds on the CPU
+  (§4.3). Running it on the GPU might make it usable, if there's VRAM to spare
+  next to the chat model. Ollama would need a rerank endpoint, or use a separate
+  server such as vLLM.
 - **Query with history.** Embed the last few turns, not just the latest
   message, so follow-ups like "why?" retrieve something useful.
 - **Vector store.** `index.json` is loaded whole into memory and scanned
@@ -1061,11 +1221,14 @@ Ideas that fit the current architecture, roughly in order of payoff.
 
 ### Conversation and runtime
 
-- **Persistent history and memory.** Store history in SQLite so it survives
-  restarts. Add per-user facts ("Captain likes X") that are summarised and
-  injected.
-- **Streaming replies.** Use `stream: true` and edit the Discord message as
-  tokens arrive.
+- **Streaming replies, if you allow longer ones.** `STREAM_REPLIES=true` already
+  edits replies in as they're written. It's off by default because today's
+  replies finish in about a second, and Discord allows about one edit a second, so
+  there's little to see. Live text can also show a repeat before `chatFresh`
+  replaces it. It becomes worthwhile if you raise `OLLAMA_MAX_REPLY_TOKENS` or turn
+  thinking on.
+- **Telling people apart.** History is shared per channel, and she doesn't see who
+  said what. Adding speaker names to history would let her follow a group chat.
 - **Long replies.** Split at 2,000 characters instead of truncating.
 - **Request queue.** One local GPU serves everyone. Queue requests per
   channel and rate-limit, so a busy server doesn't time out every reply.
@@ -1082,10 +1245,8 @@ Ideas that fit the current architecture, roughly in order of payoff.
 
 ## 6. Known limitations
 
-- Chat history is in memory and per channel. It's lost on restart, and
-  everyone in a channel shares it.
-- If an Ollama call fails, the user's message stays in history without a
-  reply, so the next request has two user turns in a row.
+- Chat history is per channel, so everyone in a channel shares it, and she can't
+  tell who said what. Remembered facts do belong to the person speaking.
 - `/remind` reminders don't survive a restart.
 - `src/safety.js` is keyword matching. It misses indirect wording and anything
   not in English, and it can be set off by jokes. It's a safety net, not a way
