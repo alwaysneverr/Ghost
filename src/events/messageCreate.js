@@ -6,8 +6,13 @@ import { logExchange } from '../logger.js';
 import { isCrisis, inCrisis, needsGentleReply } from '../safety.js';
 import { getChannel, getFacts, saveChannel } from '../store.js';
 import { MEMORY_ENABLED, rememberFrom } from '../memory.js';
+import { createStreamer } from '../streamReply.js';
 
 const RAG_TOP_K = Number(process.env.RAG_TOP_K || 4);
+
+// Off by default: replies are short enough to finish in about a second, and live
+// text can show a repeat before chatFresh gets the chance to replace it.
+const STREAM_REPLIES = process.env.STREAM_REPLIES === 'true';
 
 // Every extra message adds context the model has to reprocess on every reply.
 // 20 adds well under a second at the ~1,700 tokens/s measured on an RTX 3060.
@@ -86,6 +91,7 @@ export default {
     history.push(theirMessage);
     trimHistory(history);
 
+    let streamer = null;
     try {
       await message.channel.sendTyping();
 
@@ -107,9 +113,12 @@ export default {
       } else {
         const remembered = MEMORY_ENABLED ? getFacts(message.author.id, scope, MAX_REMEMBERED) : [];
         const { prompt, factual } = await buildSystemPrompt(content, RAG_TOP_K, userMessages, remembered);
+        // Nothing half-written on someone's worst day.
+        if (STREAM_REPLIES && !needsGentleReply(userMessages)) streamer = createStreamer(message);
         reply = await chatFresh([{ role: 'system', content: prompt }, ...history], {
           pastReplies: channel.pastReplies,
           factual,
+          onToken: streamer?.update,
         });
         if (!needsGentleReply(userMessages)) reply = maybeAddName(reply);
         channel.pastReplies = [...channel.pastReplies, reply].slice(-MAX_PAST_REPLIES);
@@ -120,7 +129,7 @@ export default {
       saveChannel(channelId);
 
       // Discord caps messages at 2000 characters
-      const sent = await message.reply(reply.slice(0, 2000));
+      const sent = streamer ? await streamer.finish(reply) : await message.reply(reply.slice(0, 2000));
 
       // No rating buttons on someone's worst day, and it stays out of the logs
       // that become training data.
@@ -143,6 +152,7 @@ export default {
       // She never answered it, so it mustn't sit in history as an unanswered message.
       const unanswered = history.lastIndexOf(theirMessage);
       if (unanswered >= 0 && history[unanswered + 1]?.role !== 'assistant') history.splice(unanswered, 1);
+      await streamer?.abort();
 
       console.error('❌ Chat error:', error);
       try {

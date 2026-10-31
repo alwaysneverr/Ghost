@@ -95,7 +95,11 @@ function staleness(reply, earlierReplies, promptWords) {
 // messages sent to the model. If every try repeats, sends the least repetitive.
 // factual turns the repetition penalty off: it covers the end of the prompt, so it
 // was steering her away from the very names and words in the fact cards.
-export async function chatFresh(messages, { model = OLLAMA_MODEL, pastReplies = [], factual = false } = {}) {
+// onToken only covers the first try: a retry's text arrives whole, replacing it.
+export async function chatFresh(
+  messages,
+  { model = OLLAMA_MODEL, pastReplies = [], factual = false, onToken = null } = {},
+) {
   const earlierReplies = [
     ...pastReplies,
     ...messages.filter(m => m.role === 'assistant').map(m => m.content),
@@ -108,7 +112,13 @@ export async function chatFresh(messages, { model = OLLAMA_MODEL, pastReplies = 
   let bestScore = Infinity;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const temperature = SAMPLING.temperature + attempt * RETRY_TEMPERATURE_STEP;
-    const reply = await chat(attemptMessages, model, temperature, factual ? 1 : SAMPLING.repeat_penalty);
+    const reply = await chat(
+      attemptMessages,
+      model,
+      temperature,
+      factual ? 1 : SAMPLING.repeat_penalty,
+      attempt === 0 ? onToken : null,
+    );
     const score = staleness(reply, earlierReplies, promptWords);
     if (score < SAME_REPLY_OVERLAP) return reply;
     if (score < bestScore) {
@@ -150,11 +160,13 @@ export async function chatJson(messages, schema, model = OLLAMA_MODEL) {
 }
 
 // messages: [{ role: 'system' | 'user' | 'assistant', content }]
+// onToken, if given, is called with the reply so far as it's written.
 export async function chat(
   messages,
   model = OLLAMA_MODEL,
   temperature = SAMPLING.temperature,
   repeatPenalty = SAMPLING.repeat_penalty,
+  onToken = null,
 ) {
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: 'POST',
@@ -162,7 +174,7 @@ export async function chat(
     body: JSON.stringify({
       model,
       messages,
-      stream: false,
+      stream: Boolean(onToken),
       think: OLLAMA_THINK,
       options: {
         ...SAMPLING,
@@ -178,9 +190,36 @@ export async function chat(
     throw new Error(`Ollama returned HTTP ${response.status}`);
   }
 
-  const data = await response.json();
+  const data = onToken ? await readStream(response, onToken) : await response.json();
   const reply = data.message?.content?.trim();
 
   if (!reply) throw new Error('Empty response from Ollama');
   return data.done_reason === 'length' ? trimToLastSentence(reply) : reply;
+}
+
+// Ollama streams one JSON object per line. Returns the same shape as a normal reply.
+async function readStream(response, onToken) {
+  const decoder = new TextDecoder();
+  let buffered = '';
+  let content = '';
+  let doneReason = null;
+
+  const readLine = line => {
+    const part = JSON.parse(line);
+    if (part.done) doneReason = part.done_reason;
+    if (part.message?.content) {
+      content += part.message.content;
+      onToken(content);
+    }
+  };
+
+  for await (const chunk of response.body) {
+    buffered += decoder.decode(chunk, { stream: true });
+    const lines = buffered.split('\n');
+    buffered = lines.pop();
+    lines.filter(Boolean).forEach(readLine);
+  }
+  if (buffered.trim()) readLine(buffered);
+
+  return { message: { content }, done_reason: doneReason };
 }
