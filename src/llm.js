@@ -91,7 +91,9 @@ function staleness(reply, earlierReplies, promptWords) {
 // Sampling alone only makes that less likely: on a message like "haha ok" she'd
 // re-send an earlier reply whole. pastReplies can reach further back than the
 // messages sent to the model. If every try repeats, sends the least repetitive.
-export async function chatFresh(messages, { model = OLLAMA_MODEL, pastReplies = [] } = {}) {
+// factual turns the repetition penalty off: it covers the end of the prompt, so it
+// was steering her away from the very names and words in the fact cards.
+export async function chatFresh(messages, { model = OLLAMA_MODEL, pastReplies = [], factual = false } = {}) {
   const earlierReplies = [
     ...pastReplies,
     ...messages.filter(m => m.role === 'assistant').map(m => m.content),
@@ -104,7 +106,7 @@ export async function chatFresh(messages, { model = OLLAMA_MODEL, pastReplies = 
   let bestScore = Infinity;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const temperature = SAMPLING.temperature + attempt * RETRY_TEMPERATURE_STEP;
-    const reply = await chat(attemptMessages, model, temperature);
+    const reply = await chat(attemptMessages, model, temperature, factual ? 1 : SAMPLING.repeat_penalty);
     const score = staleness(reply, earlierReplies, promptWords);
     if (score < SAME_REPLY_OVERLAP) return reply;
     if (score < bestScore) {
@@ -121,7 +123,12 @@ export async function chatFresh(messages, { model = OLLAMA_MODEL, pastReplies = 
 }
 
 // messages: [{ role: 'system' | 'user' | 'assistant', content }]
-export async function chat(messages, model = OLLAMA_MODEL, temperature = SAMPLING.temperature) {
+export async function chat(
+  messages,
+  model = OLLAMA_MODEL,
+  temperature = SAMPLING.temperature,
+  repeatPenalty = SAMPLING.repeat_penalty,
+) {
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -133,6 +140,7 @@ export async function chat(messages, model = OLLAMA_MODEL, temperature = SAMPLIN
       options: {
         ...SAMPLING,
         temperature,
+        repeat_penalty: repeatPenalty,
         num_ctx: OLLAMA_NUM_CTX,
         ...(OLLAMA_THINK ? {} : { num_predict: OLLAMA_MAX_REPLY_TOKENS }),
       },

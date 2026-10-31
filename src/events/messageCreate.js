@@ -101,10 +101,11 @@ export default {
       if (inCrisis(userMessages)) {
         reply = isCrisis(content) ? character.crisisReply : character.crisisFollowUp;
       } else {
-        const systemPrompt = await buildSystemPrompt(content, RAG_TOP_K, userMessages);
+        const { prompt, factual } = await buildSystemPrompt(content, RAG_TOP_K, userMessages);
         const past = pastReplies.get(channelId) ?? [];
-        reply = await chatFresh([{ role: 'system', content: systemPrompt }, ...history], {
+        reply = await chatFresh([{ role: 'system', content: prompt }, ...history], {
           pastReplies: past,
+          factual,
         });
         if (!needsGentleReply(userMessages)) reply = maybeAddName(reply);
         pastReplies.set(channelId, [...past, reply].slice(-MAX_PAST_REPLIES));

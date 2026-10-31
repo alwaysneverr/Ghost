@@ -7,7 +7,7 @@
  */
 
 import 'dotenv/config';
-import { retrieveRelevant } from '../src/rag.js';
+import { retrieveFacts, retrieveRelevant } from '../src/rag.js';
 
 const args = process.argv.slice(2);
 const kIndex = args.indexOf('--k');
@@ -20,6 +20,10 @@ if (!query) {
 }
 
 const results = await retrieveRelevant(query, topK);
+const facts = await retrieveFacts(query);
+
+console.log(`\n🧾 Fact cards: ${facts.length} (scenes are skipped when there are any)\n`);
+for (const fact of facts) console.log(`   ${fact.text}\n`);
 
 console.log(`\n🔎 "${query}"  (top ${topK})\n`);
 if (results.length === 0) console.log('No chunks found — has `npm run index` been run?');

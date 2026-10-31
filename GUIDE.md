@@ -505,7 +505,9 @@ better.
 **What it does.** The prompt describes Ghost; RAG *shows* her. Before each
 reply, the bot looks for script scenes that match what the user said and
 pastes them into the prompt as "reference moments". The model then copies
-her real rhythm and vocabulary, and gets the lore right.
+her real rhythm and vocabulary.
+
+Scenes are for her voice, not for facts: see *Getting the facts right* below.
 
 It works in two halves:
 
@@ -613,6 +615,59 @@ You don't need to re-index after prompt changes.
 > here. Plenty of character bots never need a fine-tune.
 
 ---
+
+#### Getting the facts right
+
+Don't expect scenes to teach a small model facts. Handed the exact line saying
+who founded Rig Veda, it still said Captain did. Scenes are also chopped-up
+dialogue, full of late-story names. So facts get their own retrieval: short
+**fact cards** (`facts` in `character.js`), each traced to script lines in a
+comment.
+
+Tested on 36 questions with answers from the script, 3 replies each:
+
+| Setup | Replies containing the right answer (keyword check) | Problem |
+| --- | --- | --- |
+| Scenes she's in (304) | 50 of 108 | Invents confidently |
+| Scenes from every script (5,166) | 70 of 108 | Leaks late reveals, still invents |
+| Fact cards | 104 of 108 | Still adds small inventions |
+
+The keyword check is generous. Reading the fact-card replies by hand, 105 of 108
+answered the question correctly, but 25 added something false or made up. **Read
+the replies, not just the score.**
+
+How a card gets picked (`retrieveFacts` in `src/rag.js`):
+
+1. **By name.** A card fires if its `match` regex hits the message. Names need
+   this: "who is Noa?" scores too low on similarity alone.
+2. **By similarity.** Questions also get the cards scoring at least
+   `FACT_MIN_SCORE` with `bge-m3`, which is what catches "who's the rich girl at
+   school?". Statements and anything in the first person skip this, so "my sister
+   is so annoying" doesn't pull up Sora.
+3. **By follow-up.** "What's her power?" names nobody, so it uses the cards for
+   the last message that named someone.
+
+When a card fires, scenes are skipped and the repetition penalty is turned off
+for that reply. The penalty looks back over the end of the prompt, so it was
+steering her away from the very words on the card.
+
+To add a fact:
+
+1. Find it in the script. Check it's safe for someone who hasn't finished the
+   story, because whatever's on a card, she can say.
+2. Add a card to `facts`, with the script lines in a comment.
+3. Run `npm run rag:check -- "your question"` to see which cards fire.
+4. Read a few real replies.
+
+Two things to watch for:
+
+- **Instructions get spoken.** "You won't say anything else about him" came back
+  word for word. Write cards as plain knowledge.
+- **Prompt wording alone won't stop every mistake.** When she keeps getting one
+  question wrong, add a `situations` entry whose hint starts "Your whole answer:".
+  That's how "who is Commander?" got fixed, because the model hears Commander as
+  Captain. Questions nothing can answer, like birthdays, also go here so she says
+  she doesn't know.
 
 ### 4.4 Level C — Fine-tune her voice (LoRA)
 
@@ -987,7 +1042,8 @@ Ideas that fit the current architecture, roughly in order of payoff.
 
 ### Retrieval
 
-- **Hybrid search.** Add BM25 / keyword scoring next to the embeddings, for
+- **Hybrid search for scenes.** Fact cards already combine names and embeddings
+  (§4.3). Scene retrieval could do the same with BM25 / keyword scoring, for
   names and catchphrases that embeddings blur.
 - **Reranking.** Retrieve ~20 chunks and rerank with a cross-encoder (e.g.
   `bge-reranker-v2-m3`) down to `RAG_TOP_K`.

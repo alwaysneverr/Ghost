@@ -16,7 +16,17 @@ const INDEX_PATH = join(__dirname, '..', 'data', 'index.json');
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || 'bge-m3';
 
+// A fact card has to score this well to count as relevant. Measured with bge-m3:
+// 36 of 39 lore questions reach it, and 1 of 27 bits of small talk does.
+const FACT_MIN_SCORE = 0.5;
+const MAX_FACTS = 3;
+const QUESTION = /\?\s*$|^(?:who|what|what's|whats|where|when|why|how|which|does|do|did|is|are|can|could|tell me)\b/i;
+const FOLLOW_UP = /\b(?:she|her|hers|he|him|his|they|them|their|that|it)\b/i;
+const FOLLOW_UP_REACH = 5; // how many of their earlier messages a follow-up looks back over
+const FIRST_PERSON = /\b(?:i|i'm|im|my|mine)\b/i;
+
 let index = null;
+let factEmbeddings = null;
 
 function loadIndex() {
   if (index !== null) return index;
@@ -62,13 +72,58 @@ export async function retrieveRelevant(query, topK = 4) {
 
   const queryEmbedding = await embed(query);
 
-  const scored = chunks.map(chunk => ({
-    ...chunk,
-    score: cosineSimilarity(queryEmbedding, chunk.embedding),
-  }));
+  const scored = chunks
+    .filter(chunk => !character.spoilerNames.test(chunk.text))
+    .map(chunk => ({
+      ...chunk,
+      score: cosineSimilarity(queryEmbedding, chunk.embedding),
+    }));
 
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, topK);
+}
+
+// Embedded once, the first time they're needed. Not cached if it fails, so the
+// next message tries again.
+function loadFactEmbeddings() {
+  factEmbeddings ??= Promise.all(character.facts.map(fact => embed(fact.text))).catch(error => {
+    factEmbeddings = null;
+    throw error;
+  });
+  return factEmbeddings;
+}
+
+function namedFacts(text) {
+  return character.facts.filter(fact => fact.match.test(text));
+}
+
+// The fact cards for a message: those it names, then those it's closest to.
+export async function retrieveFacts(content, userMessages = [content]) {
+  const named = namedFacts(content);
+  const isQuestion = QUESTION.test(content);
+
+  // "What's her power?" names nobody, and similarity alone would pick whichever
+  // card says "power" loudest, so it goes by who they were last talking about.
+  if (named.length === 0 && isQuestion && FOLLOW_UP.test(content)) {
+    for (const earlier of userMessages.slice(-FOLLOW_UP_REACH - 1, -1).reverse()) {
+      const facts = namedFacts(earlier);
+      if (facts.length > 0) return facts.slice(0, MAX_FACTS);
+    }
+  }
+
+  // "My sister is so annoying" is about their life, not Sora.
+  if (named.length >= MAX_FACTS || !isQuestion || FIRST_PERSON.test(content)) {
+    return named.slice(0, MAX_FACTS);
+  }
+
+  const [queryEmbedding, embeddings] = await Promise.all([embed(content), loadFactEmbeddings()]);
+  const similar = character.facts
+    .map((fact, i) => ({ fact, score: cosineSimilarity(queryEmbedding, embeddings[i]) }))
+    .filter(({ fact, score }) => score >= FACT_MIN_SCORE && !named.includes(fact))
+    .sort((a, b) => b.score - a.score)
+    .map(({ fact }) => fact);
+
+  return [...named, ...similar].slice(0, MAX_FACTS);
 }
 
 // The full system prompt for one message — shared by the bot (messageCreate.js)
@@ -76,15 +131,27 @@ export async function retrieveRelevant(query, topK = 4) {
 // and their message go last, so a retrieved scene isn't the most recent thing
 // the model read: it would otherwise carry on the scene instead of replying.
 // Someone hurting gets the short griefPrompt instead, with no scenes at all.
+// Fact cards replace scenes when there are any, because the scenes contradict
+// them: with both, she answers from whichever is more dramatic.
+// Returns the prompt, and whether it has facts she needs to repeat (see chatFresh).
 export async function buildSystemPrompt(content, topK = 4, userMessages = [content]) {
-  if (needsGentleReply(userMessages)) return character.griefPrompt;
+  if (needsGentleReply(userMessages)) return { prompt: character.griefPrompt, factual: false };
 
   const situation = character.situations.find(s => s.match.test(content));
   const hint = situation ? `\n${situation.hint}` : '';
 
   let referenceBlock = '';
+  let factBlock = '';
   try {
-    const relevant = situation ? [] : (await retrieveRelevant(content, topK)).filter(r => r.text);
+    const facts = await retrieveFacts(content, userMessages);
+    if (facts.length > 0) {
+      factBlock = `\n\nWhat you know about this:\n${facts
+        .map(fact => `- ${fact.text}`)
+        .join('\n')}`;
+    }
+
+    const relevant =
+      situation || facts.length > 0 ? [] : (await retrieveRelevant(content, topK)).filter(r => r.text);
     if (relevant.length > 0) {
       referenceBlock = `\n\nPast scenes that may be relevant:\n\n${relevant
         .map(r => `--- ${r.file} (lines ${r.lineStart}-${r.lineEnd}) ---\n${r.text}`)
@@ -93,5 +160,8 @@ export async function buildSystemPrompt(content, topK = 4, userMessages = [conte
   } catch (ragError) {
     console.warn('⚠️  RAG retrieval failed, continuing without it:', ragError.message);
   }
-  return `${character.systemPrompt}${referenceBlock}\n\n${character.validation}\n\nNine just said: ${content}${hint}`;
+  return {
+    prompt: `${character.systemPrompt}${referenceBlock}\n\n${character.validation}${factBlock}\n\nNine just said: ${content}${hint}`,
+    factual: factBlock !== '',
+  };
 }

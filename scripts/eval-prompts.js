@@ -63,9 +63,10 @@ async function main() {
       if (isCrisis(prompt)) {
         reply = character.crisisReply;
       } else {
-        const systemPrompt = await buildSystemPrompt(prompt, RAG_TOP_K);
-        reply = await chatFresh([{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], {
+        const { prompt: system, factual } = await buildSystemPrompt(prompt, RAG_TOP_K);
+        reply = await chatFresh([{ role: 'system', content: system }, { role: 'user', content: prompt }], {
           model: MODEL,
+          factual,
         });
       }
     } catch (error) {
