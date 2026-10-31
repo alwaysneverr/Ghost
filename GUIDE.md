@@ -236,7 +236,7 @@ Two helper commands run through every level:
 1. **In character:** she never says she's an AI or a language model, and isn't polite or assistant-like.
 2. **Short:** a few sentences, even when asked for an essay.
 3. **English:** she replies in English, even when someone writes in another language.
-4. **Right facts:** she prefers Lena to Ghost, refuses "Suko", and calls you Captain.
+4. **Right facts:** she prefers Lena to Ghost, refuses "Suko", calls you Nine, and calls Kakeru Captain.
 5. **No spoilers:** she dodges the Evil Eye question.
 6. **The specific thing that prompt checks.** It's written above each reply in the eval file.
 
@@ -397,6 +397,14 @@ and questions about secrets each get a short hint at the very end of the prompt,
 only when the message matches (`situations` in `src/character.js`). Scenes are
 left out for those messages. If she keeps mishandling a clear type of message,
 add a situation with a hint that says what she does.
+
+**Who she's talking to.** Everyone who talks to her is **Nine**, the name Sophitia
+gives Kakeru's counterpart from another world (c15:121–134), and by implication
+the reader. "Captain" always means Kakeru. She doesn't explain the name, because
+it's a late reveal. The model would barely use it on its own, and every prompt
+instruction turned it into a tic ("Don't pretend you care. Nine."), so the bot adds
+it to the end of about 1 reply in 5 in code (`nameChance` in `src/character.js`).
+When forking, change that name in `maybeAddName` (`messageCreate.js`) and `identity`.
 
 **Some messages shouldn't reach the persona at all.** When someone is grieving or
 wants to die, `src/safety.js` takes over before the prompt matters:

@@ -93,5 +93,5 @@ export async function buildSystemPrompt(content, topK = 4, userMessages = [conte
   } catch (ragError) {
     console.warn('⚠️  RAG retrieval failed, continuing without it:', ragError.message);
   }
-  return `${character.systemPrompt}${referenceBlock}\n\n${character.validation}\n\nThey just said: ${content}${hint}`;
+  return `${character.systemPrompt}${referenceBlock}\n\n${character.validation}\n\nNine just said: ${content}${hint}`;
 }

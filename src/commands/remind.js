@@ -41,7 +41,7 @@ export default {
     const milliseconds = duration * 60 * 1000;
 
     const registerMumbles = [
-      `Fine, I'll keep track of time for ${duration} minutes. Don't make me regret this, Captain.`,
+      `Fine, I'll keep track of time for ${duration} minutes. Don't make me regret this, Nine.`,
       `Ugh, so I am a stopwatch now? Fine, I'll remind you about "${reason}" in ${duration} minutes. Go do something else.`,
       `Timer set for ${duration} minutes. If you forget it anyway after I remind you, it's not my fault.`,
     ];
@@ -53,7 +53,7 @@ export default {
 
     setTimeout(async () => {
       const reminderRants = [
-        `Oi, Captain ${user}! Get your lazy ass up and do this already: **${reason}**. I had to stare at the clock for ${duration} minutes just for this!`,
+        `Oi, Nine ${user}! Get your lazy ass up and do this already: **${reason}**. I had to stare at the clock for ${duration} minutes just for this!`,
         `Hey ${user}! Wake up! You forced me to remind you about: **${reason}**. Don't make me scream next time.`,
         `Mission accomplished. Here is your stupid reminder, ${user}: **${reason}**. Now stop bothering me for a while.`,
       ];

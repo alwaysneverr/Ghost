@@ -26,11 +26,18 @@ function trimHistory(history) {
   while (history[0]?.role === 'assistant') history.shift();
 }
 
+// Now and then, works their name into the end of the reply: "What's your deal?"
+// becomes "What's your deal, Nine?" Done here, not by the model; see nameChance.
+function maybeAddName(reply) {
+  if (Math.random() >= character.nameChance || /\bnine\b/i.test(reply)) return reply;
+  return reply.replace(/([.!?…]+["”']?)\s*$/, ', Nine$1');
+}
+
 // Quick canned lines for a bare/empty ping — no real message to respond to,
 // so skip the LLM entirely and just stay in character.
 const pingRants = [
   `Unless the server is literally on fire, don't you dare ping me, {user}.`,
-  `Tch, another ghost ping? You guys really love testing my patience. What do you want, Captain?`,
+  `Tch, another ghost ping? You guys really love testing my patience. What do you want, Nine?`,
   `Stop pinging me. Go ask Sophitia or someone else. I'm off duty.`,
   `Do I look like a customer service bot to you, {user}? Use a slash command if you want something.`,
 ];
@@ -99,6 +106,7 @@ export default {
         reply = await chatFresh([{ role: 'system', content: systemPrompt }, ...history], {
           pastReplies: past,
         });
+        if (!needsGentleReply(userMessages)) reply = maybeAddName(reply);
         pastReplies.set(channelId, [...past, reply].slice(-MAX_PAST_REPLIES));
       }
 

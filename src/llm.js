@@ -98,17 +98,24 @@ export async function chatFresh(messages, { model = OLLAMA_MODEL, pastReplies = 
   ];
   const promptWords = wordsOf(messages[0].content).join(' ');
 
+  const [system, ...conversation] = messages;
+  let attemptMessages = messages;
   let best = null;
   let bestScore = Infinity;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const temperature = SAMPLING.temperature + attempt * RETRY_TEMPERATURE_STEP;
-    const reply = await chat(messages, model, temperature);
+    const reply = await chat(attemptMessages, model, temperature);
     const score = staleness(reply, earlierReplies, promptWords);
     if (score < SAME_REPLY_OVERLAP) return reply;
     if (score < bestScore) {
       best = reply;
       bestScore = score;
     }
+    // Different dice alone won't shift an answer the model really likes.
+    attemptMessages = [
+      { ...system, content: `${system.content}\n\nReply to them in fresh words, nothing like: ${reply}` },
+      ...conversation,
+    ];
   }
   return best;
 }
