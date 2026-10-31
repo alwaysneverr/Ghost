@@ -14,6 +14,13 @@ const MAX_HISTORY = 10;
 // channelId -> [{ role, content }]. In-memory only; resets on bot restart.
 const conversationHistory = new Map();
 
+// History must never open on one of her replies: when it did, the model repeated
+// that reply, so from the point history filled up she replayed the conversation.
+function trimHistory(history) {
+  while (history.length > MAX_HISTORY) history.shift();
+  while (history[0]?.role === 'assistant') history.shift();
+}
+
 // Quick canned lines for a bare/empty ping — no real message to respond to,
 // so skip the LLM entirely and just stay in character.
 const pingRants = [
@@ -61,7 +68,7 @@ export default {
     const history = conversationHistory.get(channelId) ?? [];
 
     history.push({ role: 'user', content });
-    while (history.length > MAX_HISTORY) history.shift();
+    trimHistory(history);
 
     try {
       await message.channel.sendTyping();
@@ -104,7 +111,7 @@ export default {
       if (!reply) throw new Error('Empty response from Ollama');
 
       history.push({ role: 'assistant', content: reply });
-      while (history.length > MAX_HISTORY) history.shift();
+      trimHistory(history);
       conversationHistory.set(channelId, history);
 
       // Discord caps messages at 2000 characters
