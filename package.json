@@ -12,6 +12,7 @@
     "export:script": "node scripts/export-script-training-data.js",
     "export:logs": "node scripts/export-training-data.js",
     "export:combined": "node scripts/export-combined-training-data.js",
+    "export:preference": "node scripts/export-preference-data.js",
     "rag:check": "node scripts/rag-check.js",
     "eval": "node scripts/eval-prompts.js",
     "lint": "eslint ."
