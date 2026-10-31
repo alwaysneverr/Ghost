@@ -730,15 +730,18 @@ are logged. Then run:
 npm run export:logs     # → data/training-data.jsonl  (only 👍 replies)
 ```
 
-A few hundred 👍 replies is a meaningful amount. To train on both files,
-combine them (in PowerShell 7):
+A reply counts as 👍 when it has more 👍s than 👎s, counting each person's latest
+vote. A few hundred 👍 replies is a meaningful amount. To train on both files:
 
 ```powershell
-Get-Content data\script-training-data.jsonl, data\training-data.jsonl |
-  Set-Content -Encoding utf8NoBOM data\combined-training-data.jsonl
+npm run export:combined   # → data/combined-training-data.jsonl
 ```
 
-In bash: `{ cat data/script-training-data.jsonl; echo; cat data/training-data.jsonl; } > data/combined-training-data.jsonl`
+This drops duplicates, warns if either file was exported from an older persona,
+and shuffles with a fixed seed, so the same inputs always give the same file.
+`npm run export:combined -- --script-weight 2` repeats the script examples, but
+they're usually most of the data already, and repeats make her likelier to recite
+lines.
 
 > **Important:** every example contains `character.trainingPrompt`, a short
 > version of the persona (the `identity` and `style` chunks, about 360
@@ -1025,8 +1028,6 @@ Ideas that fit the current architecture, roughly in order of payoff.
   DPO needs pairs, which you could get by generating 2–3 replies per prompt
   and having raters pick one. TRL has `DPOTrainer` and `KTOTrainer`, and
   Unsloth supports both.
-- **A `export:combined` script.** Merge, dedupe and shuffle both datasets,
-  and weight the script data higher.
 - **Hold-out split and eval script.** Export a fixed held-out set, run both
   models over it through Ollama, and score with an LLM-as-judge prompt.
   Score persona fit and staying in character.
