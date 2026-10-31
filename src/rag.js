@@ -9,6 +9,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { character } from './character.js';
 import { needsGentleReply } from './safety.js';
+import { rerank } from './rerank.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const INDEX_PATH = join(__dirname, '..', 'data', 'index.json');
@@ -25,7 +26,17 @@ const FOLLOW_UP = /\b(?:she|her|hers|he|him|his|they|them|their|that|it)\b/i;
 const FOLLOW_UP_REACH = 5; // how many of their earlier messages a follow-up looks back over
 const FIRST_PERSON = /\b(?:i|i'm|im|my|mine)\b/i;
 
+const RAG_HYBRID = process.env.RAG_HYBRID === 'true';
+const RAG_RERANK = process.env.RAG_RERANK === 'true';
+const RERANK_CANDIDATES = 20;
+// The usual defaults for BM25 and reciprocal rank fusion.
+const BM25_K1 = 1.2;
+const BM25_B = 0.75;
+const RRF_K = 60;
+
 let index = null;
+let allowed = null;
+let keywordIndex = null;
 let factEmbeddings = null;
 
 function loadIndex() {
@@ -65,22 +76,103 @@ export async function embed(text) {
   return data.embedding;
 }
 
+function tokenize(text) {
+  return text.toLowerCase().replace(/[’‘]/g, "'").match(/[a-z0-9']+/g) ?? [];
+}
+
+// Word statistics for BM25, built once from the scenes she's allowed to see.
+function buildKeywordIndex(chunks) {
+  const documentFrequency = new Map();
+  const documents = chunks.map(chunk => {
+    const tokens = tokenize(chunk.text);
+    const termCounts = new Map();
+    for (const token of tokens) termCounts.set(token, (termCounts.get(token) ?? 0) + 1);
+    for (const term of termCounts.keys()) {
+      documentFrequency.set(term, (documentFrequency.get(term) ?? 0) + 1);
+    }
+    return { chunk, termCounts, length: tokens.length };
+  });
+  const averageLength = documents.reduce((sum, d) => sum + d.length, 0) / documents.length;
+  return { documents, documentFrequency, averageLength };
+}
+
+function keywordScore(document, queryTerms, { documents, documentFrequency, averageLength }) {
+  let score = 0;
+  for (const term of queryTerms) {
+    const frequency = document.termCounts.get(term);
+    if (!frequency) continue;
+    const df = documentFrequency.get(term);
+    const idf = Math.log(1 + (documents.length - df + 0.5) / (df + 0.5));
+    score +=
+      (idf * frequency * (BM25_K1 + 1)) /
+      (frequency + BM25_K1 * (1 - BM25_B + (BM25_B * document.length) / averageLength));
+  }
+  return score;
+}
+
+// Merges two rankings by position rather than score, since the scores aren't
+// comparable. A scene ranked well by either one, or fairly well by both, rises.
+function fuseRankings(byEmbedding, byKeyword) {
+  const fused = new Map();
+  for (const ranking of [byEmbedding, byKeyword]) {
+    ranking.forEach((chunk, rank) => {
+      fused.set(chunk, (fused.get(chunk) ?? 0) + 1 / (RRF_K + rank + 1));
+    });
+  }
+  return [...fused.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([chunk, score]) => ({ ...chunk, score }));
+}
+
+// Scenes naming late-reveal characters are never candidates.
+function allowedChunks() {
+  allowed ??= loadIndex().filter(chunk => !character.spoilerNames.test(chunk.text));
+  return allowed;
+}
+
 // Returns the topK most relevant script chunks for the given user message.
 export async function retrieveRelevant(query, topK = 4) {
-  const chunks = loadIndex();
+  const chunks = allowedChunks();
   if (chunks.length === 0) return [];
 
   const queryEmbedding = await embed(query);
 
-  const scored = chunks
-    .filter(chunk => !character.spoilerNames.test(chunk.text))
+  let ranked = chunks
     .map(chunk => ({
       ...chunk,
       score: cosineSimilarity(queryEmbedding, chunk.embedding),
-    }));
+    }))
+    .sort((a, b) => b.score - a.score);
 
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, topK);
+  if (RAG_HYBRID) {
+    keywordIndex ??= buildKeywordIndex(chunks);
+    const queryTerms = [...new Set(tokenize(query))];
+    const byKeyword = keywordIndex.documents
+      .map(document => ({ document, score: keywordScore(document, queryTerms, keywordIndex) }))
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(({ document }) => document.chunk);
+    const byPosition = new Map(ranked.map(chunk => [`${chunk.file}:${chunk.lineStart}`, chunk]));
+    ranked = fuseRankings(
+      ranked,
+      byKeyword.map(chunk => byPosition.get(`${chunk.file}:${chunk.lineStart}`))
+    );
+  }
+
+  if (RAG_RERANK) {
+    const candidates = ranked.slice(0, RERANK_CANDIDATES);
+    try {
+      const scores = await rerank(query, candidates.map(chunk => chunk.text));
+      return candidates
+        .map((chunk, i) => ({ ...chunk, score: scores[i] }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topK);
+    } catch (error) {
+      console.warn('⚠️  Reranking failed, using the unranked order:', error.message);
+    }
+  }
+
+  return ranked.slice(0, topK);
 }
 
 // Embedded once, the first time they're needed. Not cached if it fails, so the
