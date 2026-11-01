@@ -420,7 +420,7 @@ export const character = {
   facts,
 
   // Scenes naming these are never retrieved: they'd hand her the late reveals
-  // the prompt leaves out. That still leaves 191 of the 304 scenes.
+  // the prompt leaves out. That still leaves 160 of the 227 scenes.
   spoilerNames: /\b(?:Yoichi|Iris)\b/,
 
   // How often the bot adds "Nine" to the end of a reply (messageCreate.js). Left

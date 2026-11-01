@@ -1,18 +1,13 @@
 /**
- * Runtime retrieval — loads the pre-built index from data/index.json (see
+ * Runtime retrieval — loads the pre-built index from data/index.db (see
  * scripts/parse-and-index.js) and finds the most relevant script chunks for
  * a given user message via cosine similarity.
  */
 
-import { readFileSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { character } from './character.js';
 import { needsGentleReply } from './safety.js';
 import { rerank } from './rerank.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const INDEX_PATH = join(__dirname, '..', 'data', 'index.json');
+import { readSceneIndex, SCENE_INDEX_PATH } from './sceneIndex.js';
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || 'bge-m3';
@@ -42,13 +37,21 @@ let factEmbeddings = null;
 function loadIndex() {
   if (index !== null) return index;
 
-  if (!existsSync(INDEX_PATH)) {
-    console.warn(`⚠️  No RAG index found at ${INDEX_PATH} — run "node scripts/parse-and-index.js" first.`);
+  const stored = readSceneIndex();
+  if (!stored) {
+    console.warn(`⚠️  No RAG index found at ${SCENE_INDEX_PATH} — run "npm run index" first.`);
     index = [];
     return index;
   }
 
-  index = JSON.parse(readFileSync(INDEX_PATH, 'utf-8'));
+  // Comparing vectors from two different models gives confident nonsense.
+  if (stored.model !== EMBED_MODEL) {
+    console.warn(`⚠️  The RAG index was built with "${stored.model}", not "${EMBED_MODEL}". Run "npm run index" again. Continuing without script scenes.`);
+    index = [];
+    return index;
+  }
+
+  index = stored.scenes;
   console.log(`📚 Loaded ${index.length} script chunks for RAG.`);
   return index;
 }
@@ -63,17 +66,21 @@ function cosineSimilarity(a, b) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-// Also used by scripts/parse-and-index.js so indexing and querying always
-// embed the same way.
-export async function embed(text) {
-  const res = await fetch(`${OLLAMA_URL}/api/embeddings`, {
+// One vector per text, in the same order. Also used by scripts/parse-and-index.js
+// so indexing and querying always embed the same way.
+export async function embedBatch(texts) {
+  const res = await fetch(`${OLLAMA_URL}/api/embed`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: EMBED_MODEL, prompt: text }),
+    body: JSON.stringify({ model: EMBED_MODEL, input: texts }),
   });
   if (!res.ok) throw new Error(`Embedding request failed: HTTP ${res.status}`);
   const data = await res.json();
-  return data.embedding;
+  return data.embeddings;
+}
+
+export async function embed(text) {
+  return (await embedBatch([text]))[0];
 }
 
 function tokenize(text) {
@@ -178,7 +185,7 @@ export async function retrieveRelevant(query, topK = 4) {
 // Embedded once, the first time they're needed. Not cached if it fails, so the
 // next message tries again.
 function loadFactEmbeddings() {
-  factEmbeddings ??= Promise.all(character.facts.map(fact => embed(fact.text))).catch(error => {
+  factEmbeddings ??= embedBatch(character.facts.map(fact => fact.text)).catch(error => {
     factEmbeddings = null;
     throw error;
   });
