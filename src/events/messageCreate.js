@@ -25,11 +25,39 @@ const MAX_PAST_REPLIES = 50;
 // How many things she remembers about someone go into the prompt at once.
 const MAX_REMEMBERED = 5;
 
+const MAX_SPEAKER_NAME = 32;
+
+// How many earlier messages get listed by name in a group conversation.
+const MAX_GROUP_LINES = 6;
+
 // History must never open on one of her replies: when it did, the model repeated
 // that reply, so from the point history filled up she replayed the conversation.
 function trimHistory(history) {
   while (history.length > MAX_HISTORY) history.shift();
   while (history[0]?.role === 'assistant') history.shift();
+}
+
+// Display names are whatever people type, and they go into the prompt, so only
+// letters, numbers and spaces survive. That keeps out "SYSTEM:" and line breaks.
+function speakerName(message) {
+  const raw = message.member?.displayName ?? message.author.displayName ?? message.author.username ?? '';
+  const name = raw
+    .replace(/[^\p{L}\p{N} ]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_SPEAKER_NAME);
+  return name || `Person ${message.author.id.slice(-4)}`;
+}
+
+// What the model sees. The history itself keeps their exact words, which is what
+// the safety checks and retrieval read. Names only appear once there's more than
+// one person: a DM stays a plain conversation.
+function toModelMessages(history) {
+  const speakers = new Set(history.map(m => m.speakerId).filter(Boolean));
+  return history.map(({ role, content, speaker }) => ({
+    role,
+    content: speakers.size > 1 && speaker ? `${speaker}: ${content}` : content,
+  }));
 }
 
 // Now and then, works their name into the end of the reply: "What's your deal?"
@@ -87,7 +115,8 @@ export default {
     const { history } = channel;
     const scope = message.guildId ?? 'dm';
 
-    const theirMessage = { role: 'user', content };
+    const speaker = speakerName(message);
+    const theirMessage = { role: 'user', content, speaker, speakerId: message.author.id };
     history.push(theirMessage);
     trimHistory(history);
 
@@ -112,10 +141,23 @@ export default {
         reply = isCrisis(content) ? character.crisisReply : character.crisisFollowUp;
       } else {
         const remembered = MEMORY_ENABLED ? getFacts(message.author.id, scope, MAX_REMEMBERED) : [];
-        const { prompt, factual } = await buildSystemPrompt(content, RAG_TOP_K, userMessages, remembered);
+        const modelMessages = toModelMessages(history);
+        const isGroup = modelMessages.some((m, i) => m.content !== history[i].content);
+        const { prompt, factual } = await buildSystemPrompt(
+          content,
+          RAG_TOP_K,
+          userMessages,
+          remembered,
+          isGroup
+            ? {
+                speaker,
+                recent: history.filter(m => m.role === 'user' && m !== theirMessage).slice(-MAX_GROUP_LINES),
+              }
+            : null
+        );
         // Nothing half-written on someone's worst day.
         if (STREAM_REPLIES && !needsGentleReply(userMessages)) streamer = createStreamer(message);
-        reply = await chatFresh([{ role: 'system', content: prompt }, ...history], {
+        reply = await chatFresh([{ role: 'system', content: prompt }, ...modelMessages], {
           pastReplies: channel.pastReplies,
           factual,
           onToken: streamer?.update,

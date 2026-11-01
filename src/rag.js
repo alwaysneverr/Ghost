@@ -250,8 +250,15 @@ function sceneQuery(content, userMessages) {
 // them: with both, she answers from whichever is more dramatic.
 // What she remembers about the speaker goes early, not last: she recites whatever
 // she read most recently, and this should only come up when it's relevant.
+// group is { speaker, recent }, when several people share this conversation.
 // Returns the prompt, and whether it has facts she needs to repeat (see chatFresh).
-export async function buildSystemPrompt(content, topK = 4, userMessages = [content], remembered = []) {
+export async function buildSystemPrompt(
+  content,
+  topK = 4,
+  userMessages = [content],
+  remembered = [],
+  group = null
+) {
   if (needsGentleReply(userMessages)) return { prompt: character.griefPrompt, factual: false };
 
   const situation = character.situations.find(s => s.match.test(content));
@@ -286,8 +293,17 @@ export async function buildSystemPrompt(content, topK = 4, userMessages = [conte
           .join('\n')}`
       : '';
 
+  // Goes last, because the names in history alone weren't enough: she told Ben about
+  // "your cat" when the cat was Ana's. It has to say whose "my" this is.
+  const groupBlock = group
+    ? `\n\nSeveral different people are talking to you here. You call all of them Nine, and only Kakeru is Captain. Who's said what:\n${group.recent
+        .map(line => `- ${line.speaker} said: ${line.content}`)
+        .join('\n')}\nYou're answering ${group.speaker} now. When ${group.speaker} says "I" or "my", that means ${group.speaker} and nobody else.`
+    : '';
+  const speaker = group?.speaker ?? 'Nine';
+
   return {
-    prompt: `${character.systemPrompt}${rememberedBlock}${referenceBlock}\n\n${character.validation}${factBlock}\n\nNine just said: ${content}${hint}`,
+    prompt: `${character.systemPrompt}${rememberedBlock}${referenceBlock}\n\n${character.validation}${factBlock}${groupBlock}\n\n${speaker} just said: ${content}${hint}`,
     factual: factBlock !== '',
   };
 }
