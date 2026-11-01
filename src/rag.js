@@ -16,8 +16,10 @@ const EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || 'bge-m3';
 // 36 of 39 lore questions reach it, and 1 of 27 bits of small talk does.
 const FACT_MIN_SCORE = 0.5;
 const MAX_FACTS = 3;
-const QUESTION = /\?\s*$|^(?:who|what|what's|whats|where|when|why|how|which|does|do|did|is|are|can|could|tell me)\b/i;
-const FOLLOW_UP = /\b(?:she|her|hers|he|him|his|they|them|their|that|it)\b/i;
+const QUESTION = /\?\s*$|^(?:who|what|what's|whats|where|when|why|how|which|does|do|did|is|are|can|could|will|would|should|tell me)\b/i;
+const FOLLOW_UP = /\b(?:she|her|hers|he|him|his|they|them|their|that|it|this|those|these)\b/i;
+// A message this short rarely says what it's about on its own.
+const SHORT_MESSAGE_WORDS = 4;
 const FOLLOW_UP_REACH = 5; // how many of their earlier messages a follow-up looks back over
 const FIRST_PERSON = /\b(?:i|i'm|im|my|mine)\b/i;
 
@@ -225,6 +227,20 @@ export async function retrieveFacts(content, userMessages = [content]) {
   return [...named, ...similar].slice(0, MAX_FACTS);
 }
 
+// What to search scenes with. "How much?" finds nothing by itself, so follow-up
+// questions bring the message before them along: on 20 follow-ups, that found 10
+// scenes to 2. Only questions: "haha ok" doing the same pulled up the previous
+// reply's scenes again, and she repeated herself about twice as often. Doing it for
+// every message cost standalone ones most of all (15 of 26, against 18 with this
+// check and 20 with no history).
+function sceneQuery(content, userMessages) {
+  const previous = userMessages.at(-2);
+  const isFollowUp =
+    QUESTION.test(content) &&
+    (content.split(/\s+/).length <= SHORT_MESSAGE_WORDS || FOLLOW_UP.test(content));
+  return previous && isFollowUp ? `${previous}\n${content}` : content;
+}
+
 // The full system prompt for one message — shared by the bot (messageCreate.js)
 // and scripts/eval-prompts.js so both send exactly the same thing. Validation
 // and their message go last, so a retrieved scene isn't the most recent thing
@@ -252,7 +268,9 @@ export async function buildSystemPrompt(content, topK = 4, userMessages = [conte
     }
 
     const relevant =
-      situation || facts.length > 0 ? [] : (await retrieveRelevant(content, topK)).filter(r => r.text);
+      situation || facts.length > 0
+        ? []
+        : (await retrieveRelevant(sceneQuery(content, userMessages), topK)).filter(r => r.text);
     if (relevant.length > 0) {
       referenceBlock = `\n\nPast scenes that may be relevant:\n\n${relevant
         .map(r => `--- ${r.file} (lines ${r.lineStart}-${r.lineEnd}) ---\n${r.text}`)
