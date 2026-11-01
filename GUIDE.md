@@ -39,6 +39,7 @@ Reaction on a bot reply
 | `src/events/*.js` | Ready, interaction routing, chat, rating capture |
 | `src/character.js` | Persona: name, aliases, system prompt |
 | `src/rag.js` | Index loading, embedding, retrieval, building the full system prompt |
+| `src/sceneIndex.js` | SQLite: script scenes and their embeddings (`data/index.db`) |
 | `src/rerank.js` | Optional second pass over retrieved scenes (`RAG_RERANK=true`) |
 | `src/llm.js` | The one call to Ollama's chat API |
 | `src/streamReply.js` | Optional live-updating replies (`STREAM_REPLIES=true`) |
@@ -48,7 +49,7 @@ Reaction on a bot reply
 | `src/logger.js` | Exchange/rating JSONL log |
 | `scripts/lib/script-parser.js` | Script table parser + shared helpers |
 | `scripts/lib/ratings.js` | Reads the log and works out each reply's net rating |
-| `scripts/parse-and-index.js` | Builds `data/index.json` (RAG) |
+| `scripts/parse-and-index.js` | Builds `data/index.db` (RAG) |
 | `scripts/export-script-training-data.js` | Script dialogue → fine-tuning JSONL |
 | `scripts/export-training-data.js` | 👍-rated logs → fine-tuning JSONL |
 | `scripts/export-combined-training-data.js` | Merges the two above, without duplicates |
@@ -99,6 +100,7 @@ OLLAMA_NUM_CTX=16384                # context window; must fit persona + referen
 OLLAMA_MAX_REPLY_TOKENS=90          # hard limit on reply length, about 65 words
 RAG_TOP_K=4                         # script chunks injected per reply
 
+# RAG_INDEX_PATH=data/index.db      # where the script scenes are stored
 # GHOST_DB_PATH=data/ghost.db       # where history and remembered facts are stored
 # HISTORY_MAX_AGE_HOURS=24          # conversations older than this are deleted
 # MEMORY_FACTS=false                # stop remembering facts about people
@@ -252,7 +254,7 @@ cheapest-first.
 | **Changes** | Nothing yet | Her instructions and sampling settings | What she *knows* each reply | The model itself |
 | **Effort** | 30 min | An evening of iterating | 10–20 min per rebuild | A weekend, the first time |
 | **Needs** | Ollama, Node | A text editor | Script files in `data/scripts/` | NVIDIA GPU with 12 GB or more, Python |
-| **Files** | `.env` | `src/character.js`, optional `Modelfile` | `data/index.json` | `finetune/`, `data/*.jsonl` |
+| **Files** | `.env` | `src/character.js`, optional `Modelfile` | `data/index.db` | `finetune/`, `data/*.jsonl` |
 | **You're done when…** | She replies on Discord, on the GPU, and you have a baseline eval | Rules are followed at least 13 times in 16, and only "flavour" issues remain | Retrieval finds the right scenes, and replies use real lore | The fine-tune beats the base model in a side-by-side eval |
 
 Two helper commands run through every level:
@@ -546,13 +548,14 @@ Scenes are for her voice, not for facts: see *Getting the facts right* below.
 
 It works in two halves:
 
-1. **Indexing (run once):** `npm run index` cuts the script into scenes of
-   10 lines and keeps only the ones where she speaks. It uses `bge-m3` to
-   turn each scene into an embedding (a list of numbers that captures its
-   meaning) and saves everything to `data/index.json`.
+1. **Indexing (run once):** `npm run index` cuts a short scene around each of
+   her lines: the 3 lines before it and 1 after, with nearby exchanges merged. It
+   uses `bge-m3` to turn each scene into an embedding (a list of numbers that
+   captures its meaning) and saves everything to `data/index.db`.
 2. **Retrieval (every message):** the bot embeds the user's message the
    same way, finds the closest scenes, and adds the top `RAG_TOP_K` of them
-   to the prompt.
+   to the prompt. A short follow-up question like "how much?" is searched together
+   with the message before it, since it doesn't say what it's about.
 
 **Step 1 — Put the script in place.** The script files go in `data/scripts/`;
 §3 describes the table format. Files matching `excludeScripts` in
@@ -572,13 +575,16 @@ What the output means:
 📖 Found 117 script file(s). Parsing...
   c02a.txt.md: 466 lines → 9 chunk(s) featuring the target character
   ...                                            ← files with 0 chunks are normal: she isn't in them
-🧠 Embedding 304 chunks with "bge-m3"...
-  25/304 ... 304/304                             ← a few minutes
-✅ Wrote 304 embedded chunks to data/index.json
+🧠 0 scene(s) unchanged. Embedding 227 with "bge-m3"...
+  32/227 ... 227/227                             ← a few seconds
+✅ Wrote 227 embedded chunks to data/index.db
 ```
 
-When the bot starts, it should log `📚 Loaded 304 script chunks for RAG.`
-If it says *"No RAG index found"* instead, the index hasn't been built.
+Re-running is cheap: scenes whose text hasn't changed keep their embeddings.
+
+When the bot starts, it should log `📚 Loaded 227 script chunks for RAG.`
+If it says *"No RAG index found"* instead, the index hasn't been built. If it says
+the index was built with a different model, run `npm run index` again.
 
 **Step 3 — Check what it finds.**
 
@@ -587,7 +593,8 @@ npm run rag:check -- "why are you called Lena?"
 ```
 
 ```
-1. score 0.537  d06a.txt.md:246-255
+1. score 0.563  d06a.txt.md:245-249
+     Lena: "More or less. Name's Lena. Nice t'meet ya."
      Sora: "Uh. Right. Clone... Huh? Hmm, hm? Bro-bro's clone? Why is it a girl?"
      ...
 ```
@@ -607,12 +614,11 @@ Try these questions. Each should turn up a fitting scene:
 | Ask | You'd hope to see |
 | --- | --- |
 | `why are you called Lena?` | The d06a naming scene |
-| `what do you think of Haruka?` | c11c (curry) or c14c (guarding Haruka) |
+| `what do you think of Haruka?` | c03c or d20_3 (scenes with Haruka) |
 | `go buy me something from the store` | c11c (errand girl) |
-| `thanks for protecting me` | c13c or d20_5b |
-| `you're just a clone` | d06a or d12e (illusory body / pseudo-personality) |
-| `fight me` | Battle scenes (d12, d20_5) |
-| `are you scared of ghosts?` | d07b (the shrine ghost) |
+| `thanks for protecting me` | d12a or d20_5b |
+| `you're just a clone` | d06a (illusory body / pseudo-personality) |
+| `fight me` | Battle scenes (d12) |
 
 **Step 4 — Run the eval again** (`npm run eval`) and compare it with your
 Level A file. Replies should use real details (names, events) and sound
@@ -623,35 +629,65 @@ more like her, without quoting the script word for word.
 | Setting | Where | Raise it when… | Lower it when… |
 | --- | --- | --- | --- |
 | `RAG_TOP_K` (default 4; 6 and 8 showed no clear gain in testing) | `.env` | Replies feel generic, or the right scene is usually 5th or 6th in `rag:check` | Replies are slow, or she starts retelling scenes instead of talking |
-| `CHUNK_SIZE` (10) | `scripts/parse-and-index.js` | Scenes are cut off before the point | Scenes cover several topics, so matches are vague |
-| `CHUNK_STRIDE` (7) | same file | — | Lower it to get more overlap between scenes |
+| `LINES_BEFORE` (3), `LINES_AFTER` (1) | `scripts/parse-and-index.js` | Scenes lack what led up to her line | She starts retelling scenes instead of talking |
+| `MAX_SCENE_LINES` (10) | same file | Long exchanges get cut in two | Scenes cover several topics, so matches are vague |
 | `OLLAMA_EMBED_MODEL` (`bge-m3`) | `.env` | Any Ollama embedding model works; `bge-m3` is already good for English | — |
 
-**Two optional retrieval upgrades, both off by default.** Tested on 26 queries
-written from randomly sampled lines of hers, fixed before any run:
+**How scenes are cut.** The scripts have no scene markers, so breaks would have to
+be guessed. Cutting around her lines did better than guessing:
+
+| How scenes are cut | Reply found (222 automatic queries) | Fresh set (26 written queries) | Text sent to the model |
+| --- | --- | --- | --- |
+| Fixed 10-line windows | 115 | 17 | 2,660 characters |
+| **Around her lines (used)** | **129** | **20** | **1,920 characters** |
+| At runs of narration | 104–107 | 16–19 | 3,010–3,130 characters |
+| At shifts in topic | 113–118 | 18–19 | 1,970–2,550 characters |
+
+In replies, this also cut repeats from 4.5% to 3.2% over 156 replies, and copied
+no script lines. It did slightly worse on an earlier hand-picked set (17 of 30
+against 19), so it isn't better at everything.
+
+**Follow-up questions** are searched together with the message before them. On 20
+follow-ups, that found 10 scenes instead of 2. It only applies to questions: when
+"haha ok" did the same, it pulled back the last reply's scenes and near-repeats
+doubled (3.2% to 7.1%). The cost is that a real question can be nudged off course
+by whatever came before it (18 of 26 instead of 20).
+
+**Two optional retrieval upgrades, both off by default.** On the same fresh set:
 
 | Setup | Right scene in top 4 | Rank quality (MRR) | Added per message | RAM |
 | --- | --- | --- | --- | --- |
-| Embeddings (default) | 17 of 26 | 0.48 | — | — |
-| `RAG_HYBRID=true` (adds keyword search) | 17 of 26 | 0.48 | almost nothing | almost nothing |
-| `RAG_RERANK=true` (cross-encoder on CPU) | 18 of 26 | 0.65 | about 3.3 seconds | about 1.8 GB |
+| Embeddings (default) | 20 of 26 | 0.41 | — | — |
+| `RAG_HYBRID=true` (adds keyword search) | 16 of 26 | 0.51 | almost nothing | almost nothing |
+| `RAG_RERANK=true` (cross-encoder on CPU) | 21 of 26 | 0.64 | about 3 seconds | about 1.5 GB |
 
-- **Hybrid** made no difference on those queries. It did on an earlier set of 30
-  picked by hand (19 → 24), which leaned towards distinctive words and
-  catchphrases. So it's worth turning on if people quote the story at her, and it
-  costs almost nothing.
+- **Hybrid** finds fewer scenes on ordinary wording, but more on the hand-picked
+  set, which leans towards distinctive words and catchphrases (21 of 30 against 17).
+  It may suit a server where people quote the story at her.
 - **Reranking** orders scenes better but rarely finds new ones, and all the scenes
   go into the prompt anyway. Ollama has no rerank endpoint, so it runs on the CPU,
   which makes it far too slow for chat. It needs
   `npm install @huggingface/transformers` (included as an optional dependency), and
   downloads about 570 MB to `data/models/` on first use.
 
+**Why SQLite for the index.** Compared at 304 scenes and at 5,166:
+
+| Store | Load | Search | File size at 304 |
+| --- | --- | --- | --- |
+| JSON (before) | 47 ms / 773 ms | 0.25 ms / 5.8 ms | 6.1 MB |
+| **SQLite with vectors as binary (used)** | **4 ms / 55 ms** | **0.17 ms / 4.1 ms** | **1.4 MB** |
+| `sqlite-vec` extension | 5 ms / 6 ms | 3.0 ms / 17 ms | 4.3 MB |
+
+`sqlite-vec` uses less memory at 5,166 scenes (38 MB against 98 MB), but it's also
+brute force at this size, it's slower here, and it adds a native dependency.
+
 **Re-run `npm run index`** after any of these:
 
 - You add or change script files.
-- You change `excludeScripts`, `aliases`, `CHUNK_SIZE` or `CHUNK_STRIDE`.
+- You change `excludeScripts`, `aliases`, `LINES_BEFORE`, `LINES_AFTER` or
+  `MAX_SCENE_LINES`.
 - You change `OLLAMA_EMBED_MODEL`. Embeddings from different models can't
-  be compared.
+  be compared, so the bot refuses a mismatched index and carries on without scenes.
 
 You don't need to re-index after prompt changes.
 
@@ -1204,20 +1240,13 @@ Ideas that fit the current architecture, roughly in order of payoff.
 
 ### Retrieval
 
-- **Faster reranking.** `RAG_RERANK` works but takes about 3.3 seconds on the CPU
+- **Faster reranking.** `RAG_RERANK` works but takes about 3 seconds on the CPU
   (§4.3). Running it on the GPU might make it usable, if there's VRAM to spare
   next to the chat model. Ollama would need a rerank endpoint, or use a separate
   server such as vLLM.
-- **Query with history.** Embed the last few turns, not just the latest
-  message, so follow-ups like "why?" retrieve something useful.
-- **Vector store.** `index.json` is loaded whole into memory and scanned
-  linearly. That's fine for hundreds of chunks. For thousands, use
-  `sqlite-vec` or LanceDB.
-- **`/api/embed`.** The code uses Ollama's older `/api/embeddings` endpoint.
-  The newer `/api/embed` accepts batches, which would make indexing much
-  faster.
-- **Scene-aware chunking.** Split on scene breaks or file sections instead of
-  fixed 10-line windows.
+- **A real vector index, at a much bigger scale.** Search scans every scene, which
+  takes about 4 ms at 5,166 scenes (§4.3). That would matter somewhere around
+  100,000 scenes, and only then would an approximate index earn its complexity.
 
 ### Conversation and runtime
 
@@ -1227,8 +1256,9 @@ Ideas that fit the current architecture, roughly in order of payoff.
   there's little to see. Live text can also show a repeat before `chatFresh`
   replaces it. It becomes worthwhile if you raise `OLLAMA_MAX_REPLY_TOKENS` or turn
   thinking on.
-- **Telling people apart.** History is shared per channel, and she doesn't see who
-  said what. Adding speaker names to history would let her follow a group chat.
+- **Crisis handling per person.** She can now tell people apart, so one person's
+  crisis needn't change her replies to everyone else in the channel. This needs
+  care: other people's replies would still be written with that crisis in history.
 - **Long replies.** Split at 2,000 characters instead of truncating.
 - **Request queue.** One local GPU serves everyone. Queue requests per
   channel and rate-limit, so a busy server doesn't time out every reply.
@@ -1245,8 +1275,12 @@ Ideas that fit the current architecture, roughly in order of payoff.
 
 ## 6. Known limitations
 
-- Chat history is per channel, so everyone in a channel shares it, and she can't
-  tell who said what. Remembered facts do belong to the person speaking.
+- Chat history is per channel, so everyone in a channel shares it. Once more than
+  one person is talking, she sees their display names and is told who said what and
+  whose "my" is whose. On two-person test conversations that raised correct answers
+  from 5–7 of 35 to 23–26, so she still gets some wrong, and "who's in this chat?"
+  is often wrong. She still calls everyone Nine, and slips into calling someone
+  Captain about 1 reply in 20 in group chat.
 - `/remind` reminders don't survive a restart.
 - `src/safety.js` is keyword matching. It misses indirect wording and anything
   not in English, and it can be set off by jokes. It's a safety net, not a way
