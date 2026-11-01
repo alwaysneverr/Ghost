@@ -4,7 +4,7 @@
  * duplicates, warns about stale data, and shuffles with a fixed seed so the same
  * inputs always give the same file. Run export:script and export:logs first.
  *
- * Usage: node scripts/export-combined-training-data.js [--script-weight N]
+ * Usage: node scripts/export-combined-training-data.js [--script-weight N] [--synthetic]
  */
 
 import { readFileSync, writeFileSync, existsSync } from 'fs';
@@ -16,6 +16,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '..', 'data');
 const SCRIPT_PATH = join(DATA_DIR, 'script-training-data.jsonl');
 const LOGS_PATH = join(DATA_DIR, 'training-data.jsonl');
+const SYNTHETIC_PATH = join(DATA_DIR, 'synthetic-training-data.jsonl');
 const OUTPUT_PATH = join(DATA_DIR, 'combined-training-data.jsonl');
 
 const SHUFFLE_SEED = 9;
@@ -70,6 +71,9 @@ function main() {
   const weight = scriptWeight();
   const scriptRows = readRows(SCRIPT_PATH);
   const logRows = readRows(LOGS_PATH);
+  // Opt-in: these repeat her script lines with new messages, so they carry the same
+  // risk of reciting as --script-weight, until an eval shows they're worth it.
+  const syntheticRows = process.argv.includes('--synthetic') ? readRows(SYNTHETIC_PATH) : [];
 
   const seen = new Set();
   const unique = rows =>
@@ -81,22 +85,28 @@ function main() {
     });
   const uniqueScript = unique(scriptRows);
   const uniqueLogs = unique(logRows);
-  const merged = [...Array.from({ length: weight }, () => uniqueScript).flat(), ...uniqueLogs];
+  const uniqueSynthetic = unique(syntheticRows);
+  const merged = [
+    ...Array.from({ length: weight }, () => uniqueScript).flat(),
+    ...uniqueLogs,
+    ...uniqueSynthetic,
+  ];
 
   if (merged.length === 0) {
     console.error('❌ Nothing to combine. Run `npm run export:script` first.');
     process.exit(1);
   }
 
-  const stale = [...uniqueScript, ...uniqueLogs].filter(
+  const stale = [...uniqueScript, ...uniqueLogs, ...uniqueSynthetic].filter(
     row => row.messages.find(m => m.role === 'system')?.content !== character.trainingPrompt
   ).length;
   if (stale > 0) {
     console.warn(`⚠️  ${stale} example(s) were exported with an older persona. Re-run export:script and export:logs before training.`);
   }
 
-  const duplicates = scriptRows.length + logRows.length - uniqueScript.length - uniqueLogs.length;
-  console.log(`📊 ${uniqueScript.length} script example(s) × ${weight}, ${uniqueLogs.length} from logs, ${duplicates} duplicate(s) dropped.`);
+  const duplicates =
+    scriptRows.length + logRows.length + syntheticRows.length - uniqueScript.length - uniqueLogs.length - uniqueSynthetic.length;
+  console.log(`📊 ${uniqueScript.length} script example(s) × ${weight}, ${uniqueLogs.length} from logs, ${uniqueSynthetic.length} synthetic, ${duplicates} duplicate(s) dropped.`);
 
   writeFileSync(OUTPUT_PATH, shuffled(merged, SHUFFLE_SEED).map(r => JSON.stringify(r)).join('\n'));
   console.log(`✅ Wrote ${merged.length} example(s) to ${OUTPUT_PATH}`);

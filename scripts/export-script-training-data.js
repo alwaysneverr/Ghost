@@ -9,10 +9,14 @@
  * turn becomes the "user" message and her line(s) become the "assistant"
  * response. Only the English columns are used.
  *
+ * Some whole script files go to data/holdout.jsonl instead, so models can be tested
+ * on her lines they never trained on (scripts/eval-holdout.js).
+ *
  * Usage: node scripts/export-script-training-data.js
  */
 
 import 'dotenv/config';
+import { createHash } from 'crypto';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -29,8 +33,14 @@ import { character } from '../src/character.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = join(__dirname, '..', 'data', 'scripts');
 const OUTPUT_PATH = join(__dirname, '..', 'data', 'script-training-data.jsonl');
+const HOLDOUT_PATH = join(__dirname, '..', 'data', 'holdout.jsonl');
 
 const TARGET_ALIASES = targetAliases();
+
+// Whole files, not random examples: neighbouring examples share context, and one
+// example's reply is part of the next one's context, so a random split would test
+// models on text they trained on.
+const HOLDOUT_SHARE = 0.15;
 
 // How many prior turns to include as conversation history before each of
 // her lines — kept modest so examples resemble the short back-and-forth
@@ -125,6 +135,7 @@ function buildExamples(turns) {
     if (capped.length === 0) continue;
 
     examples.push({
+      line: turn.rows[0].line,
       messages: [
         { role: 'system', content: character.trainingPrompt },
         ...capped,
@@ -134,6 +145,30 @@ function buildExamples(turns) {
   }
 
   return examples;
+}
+
+// Which files to hold out. Picked by hash of the name, so it's the same files every
+// run, and adding a script doesn't reshuffle the rest.
+function pickHoldoutFiles(examples) {
+  const counts = new Map();
+  for (const { file } of examples) counts.set(file, (counts.get(file) ?? 0) + 1);
+
+  const hash = file => createHash('sha256').update(file).digest('hex');
+  const target = Math.round(examples.length * HOLDOUT_SHARE);
+  const held = new Set();
+  let total = 0;
+  for (const file of [...counts.keys()].sort((a, b) => hash(a).localeCompare(hash(b)))) {
+    if (total + counts.get(file) > target) continue;
+    held.add(file);
+    total += counts.get(file);
+  }
+  return held;
+}
+
+// Her line, ignoring case and punctuation. "Yeah." turns up all over the script, and
+// a test line she trained on elsewhere isn't a fair test.
+function replyKey(example) {
+  return example.messages.at(-1).content.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
 function main() {
@@ -154,13 +189,27 @@ function main() {
     const rows = parseScriptFile(text);
     const turns = groupIntoTurns(rows);
     const examples = buildExamples(turns);
-    all.push(...examples);
-    console.log(`  ${file}: ${rows.length} lines → ${examples.length} training example(s)`);
+    all.push(...examples.map(example => ({ ...example, file })));
+    console.log(`  ${file}: ${rows.length} lines → ${examples.length} example(s)`);
   }
 
-  writeFileSync(OUTPUT_PATH, all.map(r => JSON.stringify(r)).join('\n'));
+  const heldFiles = pickHoldoutFiles(all);
+  const train = all.filter(example => !heldFiles.has(example.file));
+  const seenInTraining = new Set(train.map(replyKey));
+  const heldOut = all.filter(example => heldFiles.has(example.file));
+  const holdout = heldOut.filter(example => !seenInTraining.has(replyKey(example)));
 
-  console.log(`\n✅ Wrote ${all.length} training example(s) to ${OUTPUT_PATH}`);
+  writeFileSync(OUTPUT_PATH, train.map(({ messages }) => JSON.stringify({ messages })).join('\n'));
+  writeFileSync(
+    HOLDOUT_PATH,
+    holdout
+      .map(({ file, line, messages }) => JSON.stringify({ source: `${file}:${line}`, messages }))
+      .join('\n')
+  );
+
+  console.log(`\n✅ Wrote ${train.length} training example(s) to ${OUTPUT_PATH}`);
+  console.log(`✅ Wrote ${holdout.length} held-out example(s) from ${heldFiles.size} file(s) to ${HOLDOUT_PATH}`);
+  console.log(`   Set aside and not used at all, because she says the same line in training: ${heldOut.length - holdout.length}`);
 }
 
 main();

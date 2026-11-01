@@ -137,12 +137,12 @@ export async function chatFresh(
 // For the model as a tool, not as her: a JSON answer matching schema, with no
 // randomness. Same num_ctx as chat(), since a different one makes Ollama reload
 // the model, which would stall the next reply.
-export async function chatJson(messages, schema) {
+export async function chatJson(messages, schema, model = OLLAMA_MODEL) {
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: OLLAMA_MODEL,
+      model,
       messages,
       stream: false,
       think: false,
