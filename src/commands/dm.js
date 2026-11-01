@@ -4,12 +4,31 @@ import {
   ApplicationIntegrationType,
   MessageFlags,
   RESTJSONErrorCodes,
+  TeamMemberMembershipState,
+  TeamMemberRole,
 } from 'discord.js';
+
+// Whoever owns the application on Discord or, if a team does, its owner and the admins
+// who've accepted their invite. Asks Discord rather than a setting, so there's nothing
+// to get wrong, and if the question fails the command fails with it.
+async function canSendDMs(client, userId) {
+  const { owner } = await client.application.fetch();
+  if (userId === (owner?.ownerId ?? owner?.id)) return true;
+
+  const member = owner?.members?.get(userId);
+  return (
+    member?.role === TeamMemberRole.Admin &&
+    member.membershipState === TeamMemberMembershipState.Accepted
+  );
+}
 
 export default {
   data: new SlashCommandBuilder()
     .setName('dm')
-    .setDescription('Send a DM to a user.')
+    .setDescription('Send a DM to a user. Owner and team admins only.')
+    // Hides it from non-admins in servers. Discord ignores this in DMs and for user
+    // installs, so the check in execute() is what actually enforces it.
+    .setDefaultMemberPermissions(0)
     .setContexts([
       InteractionContextType.Guild,
       InteractionContextType.BotDM,
@@ -29,7 +48,13 @@ export default {
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const target = interaction.options.getUser('user');
+    if (!(await canSendDMs(interaction.client, interaction.user.id))) {
+      console.warn(`🚫 ${interaction.user.username} (${interaction.user.id}) tried to use /dm.`);
+      await interaction.editReply(`Nice try, Nine. That one's not for you.`);
+      return;
+    }
+
+    const target =interaction.options.getUser('user');
     const message = interaction.options.getString('message');
 
     try {

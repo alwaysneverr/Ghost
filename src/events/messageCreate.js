@@ -2,7 +2,7 @@ import { Events } from 'discord.js';
 import { character } from '../character.js';
 import { buildSystemPrompt } from '../rag.js';
 import { chatFresh } from '../llm.js';
-import { logExchange } from '../logger.js';
+import { logExchange, logMessage } from '../logger.js';
 import { isCrisis, inCrisis, needsGentleReply } from '../safety.js';
 import { getChannel, getFacts, saveChannel } from '../store.js';
 import { MEMORY_ENABLED, rememberFrom } from '../memory.js';
@@ -95,6 +95,15 @@ export default {
       .replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '')
       .trim();
 
+    const channelId = message.channel.id;
+    const channel = getChannel(channelId);
+    const { history } = channel;
+
+    // Only what's sent to her: the bot can see every message in a server it's in, and
+    // those are none of its business.
+    const earlierMessages = history.filter(m => m.role === 'user').map(m => m.content);
+    logMessage(message, content, needsGentleReply([...earlierMessages, content]));
+
     // Bare/empty ping — no actual message, just a quick in-character rant
     if (isMentioned && !content) {
       const chosenRant = pingRants[Math.floor(Math.random() * pingRants.length)]
@@ -110,9 +119,6 @@ export default {
 
     if (!content) return; // empty DM (attachment only, etc.) — nothing to respond to
 
-    const channelId = message.channel.id;
-    const channel = getChannel(channelId);
-    const { history } = channel;
     const scope = message.guildId ?? 'dm';
 
     const speaker = speakerName(message);
