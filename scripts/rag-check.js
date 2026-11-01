@@ -29,7 +29,7 @@ console.log(`\n🔎 "${query}"  (top ${topK})\n`);
 if (results.length === 0) console.log('No chunks found — has `npm run index` been run?');
 
 results.forEach((r, i) => {
-  const preview = (r.text || '(no text)').split('\n').slice(0, 3);
+  const preview = r.text.split('\n').slice(0, 3);
   console.log(`${i + 1}. score ${r.score.toFixed(3)}  ${r.file}:${r.lineStart}-${r.lineEnd}`);
   for (const line of preview) console.log(`     ${line.slice(0, 110)}`);
   console.log();

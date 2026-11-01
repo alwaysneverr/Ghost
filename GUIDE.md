@@ -192,7 +192,6 @@ file is a Markdown table with **8 columns** in this order:
 - An empty character column means narration.
 - **Target lines are matched on the EN character column** against your
   aliases, case-insensitively.
-- `(JP) Character Override` is parsed but currently unused.
 - To leave files out of both the RAG index and the training export, set
   `excludeScripts` (a regex on the filename) in `src/character.js`. Ghost
   uses `/^b\d/` to drop the b-route, where a *different* Ghost is the villain.

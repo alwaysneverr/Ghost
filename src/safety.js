@@ -49,7 +49,7 @@ export function isCrisis(text) {
   return CRISIS.some(pattern => pattern.test(text));
 }
 
-export function isGrieving(text) {
+function isGrieving(text) {
   return GRIEF.some(pattern => pattern.test(text));
 }
 

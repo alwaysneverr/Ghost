@@ -80,7 +80,7 @@ function isDuplicate(fact, known) {
 }
 
 // Which of the model's suggestions are safe to keep from this message.
-export function acceptableFacts(suggestions, message, known = []) {
+function acceptableFacts(suggestions, message, known) {
   const accepted = [];
   for (const raw of suggestions) {
     if (typeof raw !== 'string') continue;
@@ -95,7 +95,7 @@ export function acceptableFacts(suggestions, message, known = []) {
 
 // The model's facts from one message, after every check. Empty without asking the
 // model if the message can't contain any.
-export async function extractFacts(message, known = []) {
+async function extractFacts(message, known) {
   if (!FIRST_PERSON.test(message) || SENSITIVE.test(message)) return [];
   const { facts } = await chatJson(
     [
@@ -112,12 +112,11 @@ let queue = Promise.resolve();
 // Runs after she's replied, one at a time, so nobody waits on it and a failure
 // can't touch the conversation. Callers keep grief and crisis messages out.
 export function rememberFrom(userId, scope, message) {
-  if (!MEMORY_ENABLED) return queue;
+  if (!MEMORY_ENABLED) return;
   queue = queue
     .then(async () => {
       const facts = await extractFacts(message, getFacts(userId, scope));
       for (const fact of facts) addFact(userId, scope, fact);
     })
     .catch(error => console.warn('⚠️  Could not update memory:', error.message));
-  return queue;
 }

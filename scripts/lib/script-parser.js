@@ -28,17 +28,11 @@ export function parseScriptFile(text) {
     const cells = line.split('|').slice(1, -1).map(c => c.trim());
     if (cells.length < 8) continue;
 
-    const [lineNo, jpActor, jpOverride, jpDialogue, enCharacter, enDialogue, cnCharacter, cnDialogue] = cells;
+    const [lineNo, , , , enCharacter, enDialogue] = cells;
 
-    if (lineNo === 'Line' || /^-+$/.test(lineNo)) continue; // header/separator row
-    if (!/^\d+$/.test(lineNo)) continue;
+    if (!/^\d+$/.test(lineNo)) continue; // header/separator row
 
-    rows.push({
-      line: Number(lineNo),
-      jpActor, jpOverride, jpDialogue,
-      enCharacter, enDialogue,
-      cnCharacter, cnDialogue,
-    });
+    rows.push({ line: Number(lineNo), enCharacter, enDialogue });
   }
   return rows;
 }

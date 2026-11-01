@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CACHE_DIR = join(__dirname, '..', 'data', 'models');
-const RERANK_MODEL = process.env.RAG_RERANK_MODEL || 'onnx-community/bge-reranker-v2-m3-ONNX';
+const RERANK_MODEL = 'onnx-community/bge-reranker-v2-m3-ONNX';
 const MAX_TOKENS = 512;
 
 let loading = null;

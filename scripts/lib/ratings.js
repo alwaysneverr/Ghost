@@ -8,21 +8,21 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-export const LOG_PATH = join(__dirname, '..', '..', 'data', 'logs', 'conversations.jsonl');
+const LOG_PATH = join(__dirname, '..', '..', 'data', 'logs', 'conversations.jsonl');
 
 // Returns every logged exchange with `score`: 👍s minus 👎s, counting only each
 // rater's latest vote, so one late 👎 can't erase several 👍s. Never-rated
 // exchanges score 0, as do ties, so `rated` tells the two apart.
-export function loadRatedExchanges(logPath = LOG_PATH) {
-  if (!existsSync(logPath)) {
-    console.error(`❌ No log file found at ${logPath}`);
+export function loadRatedExchanges() {
+  if (!existsSync(LOG_PATH)) {
+    console.error(`❌ No log file found at ${LOG_PATH}`);
     process.exit(1);
   }
 
   const exchanges = new Map(); // messageId -> exchange
   const votes = new Map(); // messageId -> Map(raterId -> 'up' | 'down')
 
-  for (const line of readFileSync(logPath, 'utf-8').split('\n').filter(Boolean)) {
+  for (const line of readFileSync(LOG_PATH, 'utf-8').split('\n').filter(Boolean)) {
     const entry = JSON.parse(line);
     if (entry.type === 'exchange') {
       exchanges.set(entry.messageId, entry);

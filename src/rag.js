@@ -81,7 +81,7 @@ export async function embedBatch(texts) {
   return data.embeddings;
 }
 
-export async function embed(text) {
+async function embed(text) {
   return (await embedBatch([text]))[0];
 }
 
@@ -140,7 +140,7 @@ function allowedChunks() {
 }
 
 // Returns the topK most relevant script chunks for the given user message.
-export async function retrieveRelevant(query, topK = 4) {
+export async function retrieveRelevant(query, topK) {
   const chunks = allowedChunks();
   if (chunks.length === 0) return [];
 
@@ -254,7 +254,7 @@ function sceneQuery(content, userMessages) {
 // Returns the prompt, and whether it has facts she needs to repeat (see chatFresh).
 export async function buildSystemPrompt(
   content,
-  topK = 4,
+  topK,
   userMessages = [content],
   remembered = [],
   group = null
@@ -277,7 +277,7 @@ export async function buildSystemPrompt(
     const relevant =
       situation || facts.length > 0
         ? []
-        : (await retrieveRelevant(sceneQuery(content, userMessages), topK)).filter(r => r.text);
+        : await retrieveRelevant(sceneQuery(content, userMessages), topK);
     if (relevant.length > 0) {
       referenceBlock = `\n\nPast scenes that may be relevant:\n\n${relevant
         .map(r => `--- ${r.file} (lines ${r.lineStart}-${r.lineEnd}) ---\n${r.text}`)

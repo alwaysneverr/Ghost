@@ -26,7 +26,6 @@ export function createStreamer(message) {
       .finally(() => {
         inFlight = null;
       });
-    return inFlight;
   }
 
   return {

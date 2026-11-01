@@ -1,6 +1,6 @@
 /**
  * One place that talks to Ollama's chat endpoint — used by the bot
- * (messageCreate.js) and scripts/eval-prompts.js.
+ * (messageCreate.js, memory.js) and scripts/eval-prompts.js.
  */
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
@@ -137,12 +137,12 @@ export async function chatFresh(
 // For the model as a tool, not as her: a JSON answer matching schema, with no
 // randomness. Same num_ctx as chat(), since a different one makes Ollama reload
 // the model, which would stall the next reply.
-export async function chatJson(messages, schema, model = OLLAMA_MODEL) {
+export async function chatJson(messages, schema) {
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model,
+      model: OLLAMA_MODEL,
       messages,
       stream: false,
       think: false,
@@ -161,13 +161,7 @@ export async function chatJson(messages, schema, model = OLLAMA_MODEL) {
 
 // messages: [{ role: 'system' | 'user' | 'assistant', content }]
 // onToken, if given, is called with the reply so far as it's written.
-export async function chat(
-  messages,
-  model = OLLAMA_MODEL,
-  temperature = SAMPLING.temperature,
-  repeatPenalty = SAMPLING.repeat_penalty,
-  onToken = null,
-) {
+async function chat(messages, model, temperature, repeatPenalty, onToken) {
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

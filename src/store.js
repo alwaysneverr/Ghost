@@ -87,7 +87,7 @@ export function saveChannel(channelId) {
     .run(channelId, JSON.stringify(channel.history), JSON.stringify(channel.pastReplies), channel.updatedAt);
 }
 
-// Newest first. Keeps the most recent facts once someone goes over the limit.
+// Keeps the most recent facts once someone goes over the limit.
 export function addFact(userId, scope, fact) {
   const now = Date.now();
   database()
@@ -103,6 +103,7 @@ export function addFact(userId, scope, fact) {
     .run(userId, scope, userId, scope, MAX_FACTS_PER_PERSON);
 }
 
+// Newest first.
 export function getFacts(userId, scope, limit = MAX_FACTS_PER_PERSON) {
   return database()
     .prepare(
