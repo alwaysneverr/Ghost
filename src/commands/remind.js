@@ -4,6 +4,7 @@ import {
   ApplicationIntegrationType,
   MessageFlags,
 } from 'discord.js';
+import { createReminder } from '../reminders.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -31,6 +32,7 @@ export default {
         .setName('reason')
         .setDescription('What do you want to be reminded of?')
         .setRequired(true)
+        .setMaxLength(1000)
     ),
 
   async execute(interaction) {
@@ -38,7 +40,17 @@ export default {
 
     const duration = interaction.options.getInteger('duration');
     const reason = interaction.options.getString('reason');
-    const milliseconds = duration * 60 * 1000;
+
+    const created = createReminder(interaction.client, {
+      userId: interaction.user.id,
+      channelId: interaction.channelId,
+      reason,
+      minutes: duration,
+    });
+    if (!created) {
+      await interaction.editReply(`You've already got a pile of these waiting, Nine. Do some of them first.`);
+      return;
+    }
 
     const registerMumbles = [
       `Fine, I'll keep track of time for ${duration} minutes. Don't make me regret this, Nine.`,
@@ -48,23 +60,5 @@ export default {
 
     const chosenRegister = registerMumbles[Math.floor(Math.random() * registerMumbles.length)];
     await interaction.editReply(chosenRegister);
-
-    const user = interaction.user;
-
-    setTimeout(async () => {
-      const reminderRants = [
-        `Oi, Nine ${user}! Get your lazy ass up and do this already: **${reason}**. I had to stare at the clock for ${duration} minutes just for this!`,
-        `Hey ${user}! Wake up! You forced me to remind you about: **${reason}**. Don't make me scream next time.`,
-        `Mission accomplished. Here is your stupid reminder, ${user}: **${reason}**. Now stop bothering me for a while.`,
-      ];
-
-      const finalRant = reminderRants[Math.floor(Math.random() * reminderRants.length)];
-
-      try {
-        await interaction.followUp({ content: finalRant });
-      } catch (_error) {
-        // If the follow-up fails (e.g., the channel is deleted), ignore it to prevent the bot from crashing
-      }
-    }, milliseconds);
   },
 };

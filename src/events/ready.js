@@ -1,4 +1,5 @@
 import { Events, ActivityType } from 'discord.js';
+import { restoreReminders } from '../reminders.js';
 
 export default {
   name: Events.ClientReady,
@@ -20,5 +21,6 @@ export default {
         name: 'GhostWeary',
       },
     });
+    restoreReminders(client);
   },
 };
