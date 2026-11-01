@@ -18,8 +18,9 @@ fine-tuning the local Ollama model (`qwen3:8b` by default).
 ```
 Discord message (DM or @mention)
   └─ src/events/messageCreate.js
-       ├─ bare ping?            → canned in-character rant, no LLM
        ├─ src/store.js          → this channel's recent conversation, from memory or data/ghost.db
+       ├─ src/logger.js         → data/logs/messages.jsonl and the console
+       ├─ bare ping?            → canned in-character rant, no LLM
        ├─ src/safety.js         → crisis: fixed text, no LLM. Grief: short gentle prompt, no RAG
        ├─ src/rag.js            → fact cards if the message is about the story, otherwise script scenes
        ├─ system prompt          = src/character.js persona + what she remembers + cards or scenes
@@ -45,16 +46,19 @@ Reaction on a bot reply
 | `src/streamReply.js` | Optional live-updating replies (`STREAM_REPLIES=true`) |
 | `src/store.js` | SQLite: channel history and remembered facts (`data/ghost.db`) |
 | `src/memory.js` | Decides which facts about a person are kept |
+| `src/reminders.js` | Delivers `/remind`, and restores waiting reminders on startup |
 | `src/safety.js` | Spots crisis and grief messages, which the normal persona must not answer |
-| `src/logger.js` | Exchange/rating JSONL log |
+| `src/logger.js` | Exchange/rating JSONL log, and the log of everything sent to her |
 | `scripts/lib/script-parser.js` | Script table parser + shared helpers |
 | `scripts/lib/ratings.js` | Reads the log and works out each reply's net rating |
 | `scripts/parse-and-index.js` | Builds `data/index.db` (RAG) |
-| `scripts/export-script-training-data.js` | Script dialogue → fine-tuning JSONL |
+| `scripts/export-script-training-data.js` | Script dialogue → fine-tuning JSONL, and the held-out set |
 | `scripts/export-training-data.js` | 👍-rated logs → fine-tuning JSONL |
-| `scripts/export-combined-training-data.js` | Merges the two above, without duplicates |
+| `scripts/export-synthetic-data.js` | Her script lines with Discord-style messages → fine-tuning JSONL |
+| `scripts/export-combined-training-data.js` | Merges the above, without duplicates |
 | `scripts/export-preference-data.js` | 👍 and 👎 ratings → preference-tuning JSONL |
 | `scripts/eval-prompts.js` | `npm run eval`: fixed test prompts → `data/evals/` |
+| `scripts/eval-holdout.js` | `npm run eval:holdout`: compares models on lines they never trained on |
 | `scripts/rag-check.js` | `npm run rag:check`: shows what RAG retrieves for a message |
 
 `data/` and `finetune/` are gitignored — script text is copyrighted and model
@@ -139,6 +143,35 @@ without script grounding.
   `npm run export:logs` and `npm run export:preference` (§4).
 - **Slash commands:** `/ping`, `/hello`, `/quote`, `/remind <minutes> <reason>`,
   `/dm <user> <message>`, `/memory show`, `/memory forget`.
+- **`/remind` survives restarts:** reminders wait in `data/ghost.db` and are deleted
+  once sent. One that came due while the bot was off goes out when it starts, and
+  says how late it is. It goes to the channel it was set in, or by DM if she can't
+  post there. Anyone can have up to 20 waiting, and there's no way to cancel one.
+  Run `npm run deploy` after updating, so Discord knows about the length limit on
+  reasons and hides `/dm`. Both restrictions are enforced even if you don't.
+- **`/dm` is for the owner and team admins:** it only works for whoever owns the
+  application in the Discord Developer Portal or, if a team does, its owner and the
+  admins who've accepted their invite. Anyone else, including the team's developers
+  and read-only members, is refused and the attempt shows in the console. Server
+  members who aren't server admins don't see it, and that includes team admins, who
+  can still use it in a DM with her. People may still see it listed in DMs, because
+  Discord offers no way to hide a command there.
+
+### What gets logged
+
+Every DM and @mention goes to `data/logs/messages.jsonl` and the console, with who
+sent it, where, and any attachments, whether or not she manages to reply. Messages
+in a server that don't mention her are never recorded. **It's plain text on your
+machine and stays until you delete it, so tell people, as with her memory below.**
+
+- **Watching it:** the console shows messages as they arrive. To follow the file:
+  `Get-Content data\logs\messages.jsonl -Wait -Tail 20`.
+- **Grief and crisis:** these are recorded with `"withheld": true` and no text or
+  attachments, including the follow-ups she treats the same way. History keeps
+  those words for up to 24 hours on purpose, and this file would keep them forever.
+- **Training:** nothing reads this file for training. `conversations.jsonl` stays
+  the only source.
+- **Not included:** slash commands, and edits or deletions after a message is sent.
 
 ### What she remembers about people
 
@@ -802,7 +835,15 @@ the "user" side. Her lines are written as plain replies, without
 only "..." are skipped, and context is capped at about 5,000 characters,
 keeping the most recent part. Without that cap, long narration would push
 examples past the training limit, and the limit cuts off the *end*, which is
-her reply. Expect about 420 examples, none over about 1,940 tokens.
+her reply. Expect about 360 examples, none over about 1,940 tokens.
+
+**Some of it is held out.** About 15% of her lines, picked as whole script files, go
+to `data/holdout.jsonl` instead, so models can be tested on lines they never trained
+on (C5). It has to be whole files: neighbouring examples share context, and one
+example's reply is part of the next one's context, so a random split would test on
+training text. It's the same files every run. Lines she also says elsewhere in
+training are left out of the test altogether. 👍 logs aren't held out, because there
+are too few of them yet.
 
 To check the file, open it in VS Code and look at one line. It should have
 this shape:
@@ -831,6 +872,28 @@ and shuffles with a fixed seed, so the same inputs always give the same file.
 `npm run export:combined -- --script-weight 2` repeats the script examples, but
 they're usually most of the data already, and repeats make her likelier to recite
 lines.
+
+**Optional: Discord-style examples.** Script contexts are narration and people she
+knows, which looks nothing like what she's sent on Discord. This keeps her line word
+for word and has a model write a message a stranger could have sent to get it:
+
+```powershell
+npm run export:synthetic   # → data/synthetic-training-data.jsonl, data/synthetic-holdout.jsonl
+npm run export:combined -- --synthetic
+```
+
+| Result on `qwen3:8b` | |
+| --- | --- |
+| Examples kept | About 80 of 356, in about 10 minutes |
+| Read by hand | About 19 of 30 sound like a real exchange, so expect some odd ones |
+| Why so few | Her lines that name someone in the story, are about someone in the scene, are cut off or are too short go first, so she doesn't learn to call strangers Captain. So does anything near grief or a crisis, or anything sexual |
+| Final check | The model has to pick her line out from three others, given only the message. Rating pairs instead passed 25 of 33 deliberately mismatched ones. With this, a mismatch survives by luck, about 1 time in 4 |
+
+**It's opt-in, and untested where it counts.** No fine-tune has been trained on it,
+so whether it helps is unknown, and it repeats her script lines, which makes reciting
+likelier. Train with and without it, and compare them with C5. `--model NAME` uses a
+bigger model, which should write better messages. A re-run gives slightly different
+results, so don't regenerate `synthetic-holdout.jsonl` between models you're comparing.
 
 > **Important:** every example contains `character.trainingPrompt`, a short
 > version of the persona (the `identity` and `style` chunks, about 360
@@ -984,8 +1047,8 @@ What happens:
 
 1. **The first run downloads the base model** (about 6 GB) from Hugging Face.
 2. **Training starts** and prints a line every 5 steps, like
-   `{'loss': 2.31, ...}`. One step is 8 examples, so about 420 examples × 2
-   epochs is roughly 105 steps. Expect minutes rather than hours, depending on your GPU.
+   `{'loss': 2.31, ...}`. One step is 8 examples, so about 360 examples × 2
+   epochs is roughly 90 steps. Expect minutes rather than hours, depending on your GPU.
 3. **The model is merged and exported to GGUF.** On the first run this
    downloads and builds llama.cpp, the converter, so it's the slowest and
    most fragile step.
@@ -1067,6 +1130,41 @@ Level B. Both use the same prompt and the same RAG, so the only difference
 is the fine-tune. For a fair verdict, ask a friend to read the two files
 with the model names hidden and pick the reply that sounds more like her,
 prompt by prompt.
+
+**Then test on lines it never trained on:**
+
+```powershell
+npm run eval:holdout -- qwen3:8b ghost     # add --judge NAME or --limit N
+```
+
+Both models get the short training prompt with no scenes or fact cards, so differences
+come from the model. RAG would also hand them the lines being tested. A model then
+judges the replies, and her real lines get judged too. It saves the scores and every
+reply to `data/evals/holdout-*.md`.
+
+| Reading the result | |
+| --- | --- |
+| **Head to head** | The number to trust. A model picks the better of two replies, each model shown first half the time |
+| **Rules broken** | No judge involved: leaked thinking, assistant phrases, and so on. On script scenes, "calls them Captain" is expected, because they're talking to Kakeru. It's a real problem on Discord-style messages |
+| **Words** | She averages about 9. `qwen3:8b` averages about 35 |
+| **Voice and in character** | Only catch the plainly wrong. Replies opening with `<think>` got 5 out of 5, and the base model scores above her real lines |
+| **Judge check** | Each run tests the judge on known answers first, and warns you if it fails |
+
+What `qwen3:8b` managed as judge, testing the eval itself:
+
+| Test | Head to head |
+| --- | --- |
+| The same model against itself, which should be even | 24–33 (p=0.29) |
+| The same weights with the persona removed | 52–5 |
+| Picking her line over someone else's voice | 20 of 20 |
+| Picking her line over her own line from elsewhere | 11 of 20, a coin flip |
+
+So it can judge **voice but not whether a reply makes sense**. Read the replies for
+that. With 57 examples, treat anything closer than about 37–20 as a tie. A fine-tune
+hasn't been tested with this yet, and the difference will be smaller than removing the
+persona. Keep to one judge across comparisons, and bear in mind that a model judging
+itself may favour how it writes. The Discord-style set is only about 10 examples, far
+too few to go on by itself.
 
 > **✅ You're done with Level C when:**
 > - `ghost` passes **at least as many** checklist items as the base model.
@@ -1224,18 +1322,12 @@ Ideas that fit the current architecture, roughly in order of payoff.
 - **DPO.** KTO (C7) learns from 👍 and 👎 on single replies. DPO learns from pairs,
   which you could get by generating 2–3 replies per prompt and having raters
   pick one. TRL has a `DPOTrainer`.
-- **Hold-out split and eval script.** Export a fixed held-out set, run both
-  models over it through Ollama, and score with an LLM-as-judge prompt.
-  Score persona fit and staying in character.
 - **A bigger model.** `qwen3:8b` leaves about 2.8 GB of a 12 GB card idle at
   a 16384 context. `qwen3:14b` (9.3 GB) may fit with a smaller context, and
   `qwen3:8b-q8_0` (8.9 GB) is the same size at higher precision. Neither has
   been tested here, so compare them with `npm run eval -- <model>`.
 - **More languages.** The bot was English-only by choice. The script has
   parallel JP and CN columns, so it could be extended again.
-- **Synthetic Discord-style data.** Rewrite script contexts into casual chat
-  messages with a bigger model, so training "user" turns look like real
-  users.
 
 ### Retrieval
 
@@ -1263,8 +1355,6 @@ Ideas that fit the current architecture, roughly in order of payoff.
   channel and rate-limit, so a busy server doesn't time out every reply.
 - **Tool calling.** Qwen3 supports tools in Ollama. Expose `remind`,
   `quote`, etc. as tools so "remind me in 10 min to stretch" works in chat.
-- **Persistent reminders.** `/remind` uses `setTimeout`, so reminders are lost
-  on restart. Store them and reschedule them on `ready`.
 - **Multiple personas.** Make `character.js` a directory of personas and pick
   one per guild or channel. RAG would need an index per persona.
 - **Voice.** discord.js voice + speech-to-text + a TTS voice for the
@@ -1280,7 +1370,6 @@ Ideas that fit the current architecture, roughly in order of payoff.
   from 5–7 of 35 to 23–26, so she still gets some wrong, and "who's in this chat?"
   is often wrong. She still calls everyone Nine, and slips into calling someone
   Captain about 1 reply in 20 in group chat.
-- `/remind` reminders don't survive a restart.
 - `src/safety.js` is keyword matching. It misses indirect wording and anything
   not in English, and it can be set off by jokes. It's a safety net, not a way
   of detecting someone in danger.
