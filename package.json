@@ -13,6 +13,9 @@
     "export:logs": "node scripts/export-training-data.js",
     "lint": "eslint ."
   },
+  "engines": {
+    "node": ">=22.13"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
