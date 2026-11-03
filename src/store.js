@@ -161,6 +161,20 @@ export function countReminders(userId) {
   return database().prepare('SELECT COUNT(*) AS n FROM reminders WHERE user_id = ?').get(userId).n;
 }
 
+// Whether a reminder is still waiting: it isn't once it's been sent or cancelled.
+export function hasReminder(id) {
+  return Boolean(database().prepare('SELECT 1 FROM reminders WHERE id = ?').get(id));
+}
+
+export function getRemindersFor(userId) {
+  return getReminders().filter(reminder => reminder.userId === userId);
+}
+
 export function deleteReminder(id) {
   database().prepare('DELETE FROM reminders WHERE id = ?').run(id);
+}
+
+// Only theirs: anyone can try any number. Returns whether there was one to delete.
+export function deleteReminderFor(userId, id) {
+  return database().prepare('DELETE FROM reminders WHERE id = ? AND user_id = ?').run(id, userId).changes > 0;
 }

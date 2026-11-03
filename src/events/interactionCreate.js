@@ -4,6 +4,17 @@ export default {
   name: Events.InteractionCreate,
 
   async execute(interaction) {
+    // Suggestions while someone types an option (/reminders cancel offers their own).
+    if (interaction.isAutocomplete()) {
+      const command = interaction.client.commands.get(interaction.commandName);
+      try {
+        await command?.autocomplete?.(interaction);
+      } catch (error) {
+        console.error(`❌ Autocomplete failed for /${interaction.commandName}:`, error);
+      }
+      return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const command = interaction.client.commands.get(interaction.commandName);

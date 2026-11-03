@@ -6,18 +6,36 @@
  * tokens die after 15 minutes, and don't outlive a restart in any useful way.
  */
 
-import { addReminder, countReminders, deleteReminder, getReminders } from './store.js';
+import {
+  addReminder,
+  countReminders,
+  deleteReminder,
+  deleteReminderFor,
+  getReminders,
+  getRemindersFor,
+  hasReminder,
+} from './store.js';
 
 const MESSAGE_LIMIT = 2000;
 const MAX_REMINDERS_PER_PERSON = 20;
+export const MAX_REMINDER_MINUTES = 30 * 24 * 60;
 const LATE_AFTER_MS = 60 * 1000;
 const RETRY_AFTER_MS = 5 * 60 * 1000;
 const GIVE_UP_AFTER_MS = 24 * 60 * 60 * 1000;
+// The longest a Node timer can wait. Anything further off waits in steps.
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
+// "90 minutes", "3 hours", "2 days".
+export function describeMinutes(minutes) {
+  const [amount, unit] =
+    minutes % 1440 === 0 ? [minutes / 1440, 'day'] : minutes % 60 === 0 ? [minutes / 60, 'hour'] : [minutes, 'minute'];
+  return `${amount} ${unit}${amount === 1 ? '' : 's'}`;
+}
 
 function reminderText({ userId, reason, minutes, dueAt }, now = Date.now()) {
   const user = `<@${userId}>`;
   const rants = [
-    `Oi, Nine ${user}! Get your lazy ass up and do this already: **${reason}**. I had to stare at the clock for ${minutes} minutes just for this!`,
+    `Oi, Nine ${user}! Get your lazy ass up and do this already: **${reason}**. I had to stare at the clock for ${describeMinutes(minutes)} just for this!`,
     `Hey ${user}! Wake up! You forced me to remind you about: **${reason}**. Don't make me scream next time.`,
     `Mission accomplished. Here is your stupid reminder, ${user}: **${reason}**. Now stop bothering me for a while.`,
   ];
@@ -48,8 +66,10 @@ async function send(client, reminder) {
 }
 
 // Stays stored until it's sent, so a crash at the wrong moment means a repeat at worst.
-// One that's already a day overdue gets one try, then it's dropped.
+// One that's already a day overdue gets one try, then it's dropped. One that's gone
+// from the database was cancelled, so its timer just does nothing.
 async function deliver(client, reminder) {
+  if (!hasReminder(reminder.id)) return;
   try {
     await send(client, reminder);
     deleteReminder(reminder.id);
@@ -65,7 +85,12 @@ async function deliver(client, reminder) {
 }
 
 function schedule(client, reminder) {
-  setTimeout(() => deliver(client, reminder), Math.max(0, reminder.dueAt - Date.now()));
+  const wait = reminder.dueAt - Date.now();
+  if (wait > MAX_TIMER_MS) {
+    setTimeout(() => schedule(client, reminder), MAX_TIMER_MS);
+    return;
+  }
+  setTimeout(() => deliver(client, reminder), Math.max(0, wait));
 }
 
 // Returns false if they've got too many waiting already: each one sits on disk.
@@ -74,6 +99,16 @@ export function createReminder(client, { userId, channelId, reason, minutes }) {
   const dueAt = Date.now() + minutes * 60 * 1000;
   schedule(client, addReminder({ userId, channelId, reason, minutes, dueAt }));
   return true;
+}
+
+// Theirs, soonest first.
+export function listReminders(userId) {
+  return getRemindersFor(userId);
+}
+
+// Returns whether they had one with that number.
+export function cancelReminder(userId, id) {
+  return deleteReminderFor(userId, id);
 }
 
 // Once, when the bot starts. Any that came due while it was off go out straight away.
