@@ -17,6 +17,7 @@ const LOG_DIR = process.env.GHOST_LOG_DIR || join(__dirname, '..', 'data', 'logs
 const LOG_PATH = join(LOG_DIR, 'conversations.jsonl');
 const MESSAGE_LOG_PATH = join(LOG_DIR, 'messages.jsonl');
 
+
 const MAX_CONSOLE_TEXT = 200;
 
 function ensureLogDir() {
@@ -71,14 +72,16 @@ function writeMessage(message, content, withheld, { direction, icon, label, extr
 }
 
 // One message sent to her, whether or not she goes on to answer it. Apart from
-// conversations.jsonl, because that one becomes training data.
+// conversations.jsonl, because that one becomes training data. via names the command
+// it came through, for /ask and "Reply as"; author is then whoever used it.
 // A failure here warns and carries on, since a full disk shouldn't stop her replying.
-export function logMessage(message, content, withheld) {
+export function logMessage(message, content, withheld, { via = null } = {}) {
   try {
     writeMessage(message, content, withheld, {
       direction: 'received',
       icon: '📨',
-      label: `${message.author.username} (${message.author.id})`,
+      label: `${message.author.username} (${message.author.id})${via ? ` via ${via}` : ''}`,
+      extra: via ? { via } : {},
     });
   } catch (error) {
     console.warn('⚠️  Could not log an incoming message:', error.message);

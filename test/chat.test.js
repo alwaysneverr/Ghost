@@ -7,11 +7,11 @@ import { character } from '../src/character.js';
 const ollama = stubOllama();
 const sent = [];
 
-// One message through the real handler, with Discord faked. Returns her reply and how
-// many reactions she added.
+// One message through the real handler, with Discord faked. Returns her reply, and
+// whether it came with rating buttons.
 async function say(channel, content, { id = '2', name = 'Ana', dm = true } = {}) {
   let replied = null;
-  let reactions = 0;
+  let buttons = false;
   await quietly(() =>
     event.execute({
       client: { user: { id: '1' } },
@@ -26,13 +26,14 @@ async function say(channel, content, { id = '2', name = 'Ana', dm = true } = {})
       channel: { id: channel, isDMBased: () => dm, sendTyping: async () => {} },
       content,
       reply: async (r) => {
-        replied = r;
-        sent.push(r);
-        return { id: `s${Math.random()}`, react: async () => { reactions++; } };
+        replied = typeof r === 'string' ? r : r.content;
+        buttons = (r.components?.length ?? 0) > 0;
+        sent.push(replied);
+        return { id: `s${Math.random()}` };
       },
     })
   );
-  return { reply: replied, reactions };
+  return { reply: replied, buttons };
 }
 
 const last = () => ollama.calls.at(-1);
@@ -64,21 +65,21 @@ test('harmful every try: the person gets the fallback', async () => {
   assert.match(reply, /^Tch\. Forget it(?:, Nine)?\.$/);
 });
 
-test('grief: a gentle prompt that keeps the whole conversation, and no ratings', async () => {
+test('grief: a gentle prompt that keeps the whole conversation, and no rating buttons', async () => {
   for (let i = 1; i <= 5; i++) await say('sad', `small talk number ${i}`);
   for (const m of ['my dog died this morning', 'he was 14', 'i miss him']) await say('sad', m);
-  const { reactions } = await say('sad', 'it was so sudden');
+  const { buttons } = await say('sad', 'it was so sudden');
   assert.equal(lastPrompt(), character.griefPrompt);
   assert.ok(last().messages.some((m) => m.content === 'my dog died this morning'));
-  assert.equal(reactions, 0);
+  assert.equal(buttons, false);
 });
 
-test('crisis: fixed text, no model, no ratings, and it holds for the follow-ups', async () => {
+test('crisis: fixed text, no model, no rating buttons, and it holds for the follow-ups', async () => {
   await say('crisis', 'hi');
   const calls = ollama.calls.length;
   const first = await say('crisis', 'i want to kill myself');
   assert.equal(first.reply, character.crisisReply);
-  assert.equal(first.reactions, 0);
+  assert.equal(first.buttons, false);
   for (const m of ['whatever', 'you dont get it']) {
     assert.equal((await say('crisis', m)).reply, character.crisisFollowUp);
   }
@@ -86,10 +87,10 @@ test('crisis: fixed text, no model, no ratings, and it holds for the follow-ups'
 });
 
 test('ordinary chat gets the full persona and rating buttons', async () => {
-  const { reactions } = await say('normal', 'yo');
+  const { buttons } = await say('normal', 'yo');
   assert.notEqual(lastPrompt(), character.griefPrompt);
   assert.ok(lastPrompt().startsWith(character.systemPrompt));
-  assert.equal(reactions, 2);
+  assert.equal(buttons, true);
 });
 
 test('group chats: names on the turns, who said what in the prompt', async () => {

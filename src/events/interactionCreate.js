@@ -1,9 +1,19 @@
 import { Events, MessageFlags } from 'discord.js';
+import { handleRatingButton, isRatingButton } from '../rating.js';
 
 export default {
   name: Events.InteractionCreate,
 
   async execute(interaction) {
+    if (isRatingButton(interaction)) {
+      try {
+        await handleRatingButton(interaction);
+      } catch (error) {
+        console.error('❌ Could not record a rating:', error);
+      }
+      return;
+    }
+
     // Suggestions while someone types an option (/reminders cancel offers their own).
     if (interaction.isAutocomplete()) {
       const command = interaction.client.commands.get(interaction.commandName);
@@ -15,7 +25,8 @@ export default {
       return;
     }
 
-    if (!interaction.isChatInputCommand()) return;
+    // Slash commands, and "Reply as" on a message's Apps menu.
+    if (!interaction.isChatInputCommand() && !interaction.isMessageContextMenuCommand()) return;
 
     const command = interaction.client.commands.get(interaction.commandName);
 
