@@ -36,7 +36,8 @@ Reaction on a bot reply
 | --- | --- |
 | `src/index.js` | Client setup; auto-loads everything in `commands/` and `events/` |
 | `src/deploy-commands.js` | Registers slash commands with Discord |
-| `src/commands/*.js` | `/dm`, `/hello`, `/memory`, `/ping`, `/quote`, `/remind` |
+| `src/commands/*.js` | `/dm`, `/echo`, `/hello`, `/memory`, `/ping`, `/quote`, `/remind`, `/tell` |
+| `src/access.js` | Who counts as an owner or team admin, for `/dm` and `/echo` |
 | `src/events/*.js` | Ready, interaction routing, chat, rating capture |
 | `src/character.js` | Persona: name, aliases, system prompt |
 | `src/rag.js` | Index loading, embedding, retrieval, building the full system prompt |
@@ -142,20 +143,36 @@ without script grounding.
 - **Rate replies:** react 👍/👎 on its replies. These ratings feed
   `npm run export:logs` and `npm run export:preference` (§4).
 - **Slash commands:** `/ping`, `/hello`, `/quote`, `/remind <minutes> <reason>`,
-  `/dm <user> <message>`, `/memory show`, `/memory forget`.
+  `/dm <user> <message>`, `/echo <message>`, `/tell <message> [user]`, `/memory show`,
+  `/memory forget`.
 - **`/remind` survives restarts:** reminders wait in `data/ghost.db` and are deleted
   once sent. One that came due while the bot was off goes out when it starts, and
   says how late it is. It goes to the channel it was set in, or by DM if she can't
   post there. Anyone can have up to 20 waiting, and there's no way to cancel one.
   Run `npm run deploy` after updating, so Discord knows about the length limit on
-  reasons and hides `/dm`. Both restrictions are enforced even if you don't.
-- **`/dm` is for the owner and team admins:** it only works for whoever owns the
-  application in the Discord Developer Portal or, if a team does, its owner and the
-  admins who've accepted their invite. Anyone else, including the team's developers
-  and read-only members, is refused and the attempt shows in the console. Server
-  members who aren't server admins don't see it, and that includes team admins, who
-  can still use it in a DM with her. People may still see it listed in DMs, because
-  Discord offers no way to hide a command there.
+  reasons and hides `/dm` and `/echo`. Both restrictions are enforced even if you don't.
+- **`/dm` and `/echo` are for the owner and team admins:** they only work for whoever
+  owns the application in the Discord Developer Portal or, if a team does, its owner
+  and the admins who've accepted their invite. Anyone else, including the team's
+  developers and read-only members, is refused and the attempt shows in the console.
+  Server members who aren't server admins don't see them, and that includes team
+  admins, who can still use them in a DM with her. People may still see them listed
+  in DMs, because Discord offers no way to hide a command there.
+- **`/echo` makes her say something in the channel you use it in.** Nobody else sees
+  who did it, so the console records it. It pings nobody, even if the text says
+  `@everyone`, it isn't added to her conversation history, and it only works where
+  she can post, so not in a server she hasn't joined.
+- **`/tell` has her pass your message on**, to one person or to everyone there,
+  wrapped in a line of her own. Anyone can use it, because Discord shows who used the
+  command above her reply. Only the person it's for gets pinged, and she won't pass
+  on a message telling someone to harm themselves.
+- **In group DMs, only commands work.** Bots can't join group DMs, so she's there only
+  through people who have installed her to their own account, and she only sees the
+  commands they use. She can't chat, react or post on her own there. `/tell`, `/ping`,
+  `/quote`, `/hello`, `/memory` and `/dm` work. `/echo` doesn't, because it posts to
+  the channel. `/remind` is set there but arrives by DM. A reply to a command has to
+  come within 15 minutes, with at most 5 follow-ups, so anything she'd post later or
+  unprompted can't work there.
 
 ### What gets logged
 
@@ -461,6 +478,39 @@ replies, and from then on she replayed the conversation. So chat with her for 15
 or 20 messages before trusting a change. `src/llm.js` now also regenerates a
 reply that repeats an earlier one, or copies a sentence from the prompt.
 
+**She copies her own habits, so the code limits what she can copy.** One early reply
+used to set the tone for the whole conversation. Loaded with one tester's saved
+history, she brought up Captain in 11 of 12 replies, against 4 of 12 with none. Three
+things in the code deal with this:
+
+- **She sees only her last 3 replies.** Older messages from the person move into the
+  prompt, with her replies to them left out (`recentStart` in `src/llm.js`). Removing
+  only her replies didn't work: that left a pile of unanswered messages, and she
+  answered the old ones.
+- **Recent habits get cut** (`dropHabits`). A sentence goes if it reuses three words
+  in a row from her last 8 replies, calls them Captain, or brings Captain up within 4
+  replies of the last time, when nobody asked. If the reply opens on one, it's
+  regenerated, since cutting the opening once left only a stray "Dumbass."
+- **Retries see less and quote nothing.** They used to quote the rejected reply and
+  ask for "nothing like" it, and 32 of 42 retries sent that same reply back word for
+  word, because it was the last thing she'd read.
+
+Measured over 120 replies on conversations written after these were tuned:
+
+| | Before | After |
+| --- | --- | --- |
+| Brings up Captain unprompted | 36 | 14 |
+| Reuses a phrase from an earlier reply | 36 | 0 |
+| Exact repeat of an earlier reply | 5 | 0 |
+| Average words | 22.0 | 17.5 |
+| Slowest 10% of replies take at least | 1.9s | 1.6s |
+
+Story facts got better too, from 200 of 216 correct to 210, because the old retry was
+sending wrong answers straight back. The cost is a slightly weaker memory of the
+conversation: 56 of 60 follow-up checks passed, against 58 of 60 before. Some habits still get through, because this only
+catches exact wording. "I'll kill 'em", "I'll gut 'em" and "I'll beat 'em" all count
+as different. A prompt rule against bringing up other people made no difference.
+
 **Situations go in code, not the prompt.** Favours, requests for long writing,
 and questions about secrets each get a short hint at the very end of the prompt,
 only when the message matches (`situations` in `src/character.js`). Scenes are
@@ -487,6 +537,13 @@ wants to die, `src/safety.js` takes over before the prompt matters:
 In testing, the full persona told someone who wanted to die "You're not worth
 it", and even the gentle prompt answered "should I just do it?" with "Yeah." So
 don't replace the fixed text with something the model generates.
+
+Her replies get checked too, because this also happens on ordinary messages. "i always
+get nervous" got "You're gonna kill yourself, Nine. Just do it." A reply telling
+someone to harm themselves is never sent: it's regenerated, and after three tries she
+sends `fallbackReply` instead. That's `isHarmfulReply` in `src/safety.js`. It's keyword
+matching, so it's a net, not a guarantee. "I'll kill your ass" is allowed through,
+because that's how she talks.
 
 **Never use your eval prompts as examples in the prompt.** If you do, the eval
 stops telling you anything.
