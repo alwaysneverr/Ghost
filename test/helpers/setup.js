@@ -36,11 +36,14 @@ function fakeEmbedding(text, sameMeaning) {
 
 // Stands in for Ollama. Chat replies come from `replies` in order, then made-up ones
 // that share no words, so none of them counts as a repeat. Every chat request is kept
-// in `calls`, and every embedded text in `embedded`.
-export function stubOllama(replies = [], { sameMeaning = [] } = {}) {
+// in `calls`, every embedded text in `embedded`, and every JSON request (the reply
+// check, memory) in `jsonCalls`. The reply check answers yes for the replies in
+// `selfHarm`.
+export function stubOllama(replies = [], { sameMeaning = [], selfHarm = [] } = {}) {
   const queue = [...replies];
   const calls = [];
   const embedded = [];
+  const jsonCalls = [];
   const word = () => Array.from({ length: 7 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join('');
   globalThis.fetch = async (url, options) => {
     const body = JSON.parse(options.body);
@@ -49,14 +52,23 @@ export function stubOllama(replies = [], { sameMeaning = [] } = {}) {
       embedded.push(...texts);
       return Response.json({ embeddings: texts.map(text => fakeEmbedding(text, sameMeaning)) });
     }
+    if (body.format) {
+      jsonCalls.push(body);
+      if (body.format.properties?.self_harm) {
+        const asked = body.messages.at(-1).content;
+        const flagged = selfHarm.some(reply => asked.endsWith(`The reply: ${reply}`));
+        return Response.json({ message: { content: JSON.stringify({ self_harm: flagged }) }, done_reason: 'stop' });
+      }
+      return Response.json({ message: { content: '{"facts":[]}' }, done_reason: 'stop' });
+    }
     calls.push(body);
-    if (body.format) return Response.json({ message: { content: '{"facts":[]}' }, done_reason: 'stop' });
     const content = queue.length > 0 ? queue.shift() : `${word()} ${word()} ${word()} ${word()}.`;
     return Response.json({ message: { content }, done_reason: 'stop' });
   };
   return {
     calls,
     embedded,
+    jsonCalls,
     queue: (...more) => queue.push(...more),
   };
 }

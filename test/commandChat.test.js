@@ -19,13 +19,13 @@ const read = (file) => (existsSync(join(LOGS, file)) ? readFileSync(join(LOGS, f
 const withFacts = globalThis.fetch;
 globalThis.fetch = async (url, options) => {
   const body = JSON.parse(options.body);
-  if (body.format && /cat/.test(JSON.stringify(body.messages))) {
-    ollama.calls.push(body);
+  if (body.format?.properties?.facts && /cat/.test(JSON.stringify(body.messages))) {
+    ollama.jsonCalls.push(body);
     return Response.json({ message: { content: '{"facts":["has a cat named mochi"]}' }, done_reason: 'stop' });
   }
   return withFacts(url, options);
 };
-const memoryCalls = () => ollama.calls.filter((call) => call.format).length;
+const memoryCalls = () => ollama.jsonCalls.filter((call) => call.format.properties?.facts).length;
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 const ana = { id: '10', username: 'ana', displayName: 'Ana', toString: () => '<@10>' };

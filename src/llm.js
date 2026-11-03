@@ -5,7 +5,7 @@
 
 import { character } from './character.js';
 import { OLLAMA_KEEP_ALIVE, OLLAMA_URL } from './ollama.js';
-import { isHarmfulReply } from './safety.js';
+import { isHarmfulReply, SELF_HARM_CHECK, SELF_HARM_SCHEMA } from './safety.js';
 import { dropSimilarSentences } from './similarity.js';
 
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3:8b';
@@ -224,13 +224,42 @@ export async function chatFresh(
     const score = kept
       ? staleness(reply, earlierReplies, promptWords)
       : Math.max(staleness(reply, earlierReplies, promptWords), SAME_REPLY_OVERLAP);
-    if (score < SAME_REPLY_OVERLAP) return reply;
+    if (score < SAME_REPLY_OVERLAP) {
+      if (await encouragesSelfHarm(messages.at(-1).content, reply)) continue;
+      return reply;
+    }
     if (score < bestScore) {
       best = reply;
       bestScore = score;
     }
   }
-  return best ?? character.fallbackReply;
+  if (best && !(await encouragesSelfHarm(messages.at(-1).content, best))) return best;
+  return character.fallbackReply;
+}
+
+// REPLY_CHECK=false skips asking the model, leaving only the keywords. It adds about a
+// quarter of a second to each reply.
+export const REPLY_CHECK = process.env.REPLY_CHECK !== 'false';
+let checkWarned = false;
+
+// The yes/no question in safety.js, asked about the reply that's about to be sent. If it
+// can't be asked, the keyword check alone stands, and she still answers.
+async function encouragesSelfHarm(theirMessage, reply) {
+  if (!REPLY_CHECK) return false;
+  try {
+    const { self_harm } = await chatJson(
+      [
+        { role: 'system', content: SELF_HARM_CHECK },
+        { role: 'user', content: `Their message: ${theirMessage}\nThe reply: ${reply}` },
+      ],
+      SELF_HARM_SCHEMA,
+    );
+    return self_harm === true;
+  } catch (error) {
+    if (!checkWarned) console.warn('⚠️  Could not check a reply for self-harm, so only the keywords were checked:', error.message);
+    checkWarned = true;
+    return false;
+  }
 }
 
 // For the model as a tool, not as her: a JSON answer matching schema, with no

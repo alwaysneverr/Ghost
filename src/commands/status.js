@@ -50,6 +50,11 @@ export function formatStatus(status, now = Date.now()) {
       ? `🔴 ghost.db: ${stored.error}`
       : `💾 ghost.db: ${stored.conversations} conversation(s), ${stored.facts} remembered fact(s), ${stored.reminders} reminder(s) waiting`
   );
+  lines.push(
+    status.replyCheck
+      ? '🛡️ Replies are checked for self-harm by keywords and by the chat model'
+      : '⚠️ Replies are checked for self-harm by keywords only (REPLY_CHECK=false)'
+  );
   const kept = status.messageLogDays ? `kept for ${status.messageLogDays} day(s)` : 'kept until you delete it';
   lines.push(`📝 Logs: ${logs.map(log => `${log.name} ${size(log.bytes)}`).join(', ')}. The message log is ${kept}.`);
   lines.push(`⚙️ Ghost ${process.version}, Node ${process.node}, ${size(process.memoryBytes)} in use, models kept loaded for ${status.keepAlive}`);

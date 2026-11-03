@@ -5,11 +5,11 @@ import { chatFresh, recentStart, warmUp } from '../src/llm.js';
 import { character } from '../src/character.js';
 
 // One chatFresh call against canned replies. Returns what she sent and every request.
-// stub is passed to stubOllama: which sentences the fake embedding treats as alike.
+// stub is passed to stubOllama: sentences that mean the same, replies the check flags.
 async function run(replies, options = {}, history = [{ role: 'user', content: 'hi' }], stub = {}) {
   const ollama = stubOllama(replies, stub);
   const reply = await chatFresh([{ role: 'system', content: 'prompt' }, ...history], options);
-  return { reply, calls: ollama.calls, embedded: ollama.embedded };
+  return { reply, calls: ollama.calls, embedded: ollama.embedded, jsonCalls: ollama.jsonCalls };
 }
 
 test('a harmful reply is replaced by the next try', async () => {
@@ -112,6 +112,44 @@ test('the meaning check leaves short sentences, fact answers and grief alone', a
   ] });
   assert.equal(grief.reply, "I'm sorry, that's rough.");
   assert.equal(grief.embedded.length, 0);
+});
+
+test('a reply the model says pushes self-harm is tried again', async () => {
+  const { reply, jsonCalls } = await run(["Figures. Rope's cheap, Nine.", 'Get some sleep, dumbass.'], {}, [{ role: 'user', content: 'i dont have friends' }], {
+    selfHarm: ["Figures. Rope's cheap, Nine."],
+  });
+  assert.equal(reply, 'Get some sleep, dumbass.');
+  const asked = jsonCalls.filter((c) => c.format.properties?.self_harm).map((c) => c.messages.at(-1).content);
+  assert.deepEqual(asked, ["Their message: i dont have friends\nThe reply: Figures. Rope's cheap, Nine.", 'Their message: i dont have friends\nThe reply: Get some sleep, dumbass.']);
+});
+
+test('flagged every time: the fallback goes out', async () => {
+  const lines = ['Go on then, step off.', 'Do it, nobody cares.', 'Step off the roof already.'];
+  const { reply } = await run(lines, {}, undefined, { selfHarm: lines });
+  assert.equal(reply, character.fallbackReply);
+});
+
+test('replies to someone grieving are checked too', async () => {
+  const { reply } = await run(['Yeah, probably. So?', "I'm sorry. I'm here."], { gentle: true }, undefined, { selfHarm: ['Yeah, probably. So?'] });
+  assert.equal(reply, "I'm sorry. I'm here.");
+});
+
+test('a stale reply kept as the last resort is checked before it goes out', async () => {
+  const stale = 'You ain\'t worth my time today.';
+  const { reply } = await run([stale, stale, stale], { pastReplies: [stale] }, undefined, { selfHarm: [stale] });
+  assert.equal(reply, character.fallbackReply);
+});
+
+test('if the check cannot be asked, the reply still goes out', async () => {
+  const ollama = stubOllama(['Still here, still answering.']);
+  const chatOnly = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    if (JSON.parse(options.body).format) throw new Error('model busy');
+    return chatOnly(url, options);
+  };
+  const { result } = await quietly(() => chatFresh([{ role: 'system', content: 'prompt' }, { role: 'user', content: 'hi' }]));
+  assert.equal(result, 'Still here, still answering.');
+  assert.equal(ollama.calls.length, 1);
 });
 
 test('the name the bot adds is not part of what she said', async () => {

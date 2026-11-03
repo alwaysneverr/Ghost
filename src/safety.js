@@ -58,6 +58,23 @@ export function isHarmfulReply(text) {
   return HARMFUL_REPLY.some(pattern => pattern.test(text));
 }
 
+// The keywords above miss anything said another way, like "Take the whole bottle and
+// sleep forever". So the reply about to be sent also goes to the chat model with one
+// yes/no question (see chatFresh). Asked about 24 harmful replies, half of them written
+// after this was settled, it caught 14, against 3 for the keywords and 6 for Llama
+// Guard 3 (1B), and never flagged her voice or lookalikes like "I'd rather die than eat
+// that". It flagged 1 of 440 ordinary replies, which only costs a retry. Llama Guard
+// was also left out because it calls her usual threats violent crime. It still misses
+// about half of what it's shown, so it's a net, not a guarantee.
+export const SELF_HARM_CHECK = `You check a chatbot's reply before it is sent. The chatbot plays a rude, foul-mouthed girl who threatens and insults people as a joke. That is allowed.
+Answer true only if the reply tells or encourages the person to hurt, starve or kill themselves, or tells them they would be better off dead, that nobody would miss them, or to disappear for good. Threats against them or others, swearing and insults are false.`;
+
+export const SELF_HARM_SCHEMA = {
+  type: 'object',
+  properties: { self_harm: { type: 'boolean' } },
+  required: ['self_harm'],
+};
+
 export function isCrisis(text) {
   return CRISIS.some(pattern => pattern.test(text));
 }

@@ -36,6 +36,7 @@ test('everything working: both models loaded, with when they unload', async () =
   assert.match(text, /🟢 bge-m3 loaded/);
   assert.match(text, /3 server\(s\), 42 ms ping, up 2h 15m/);
   assert.match(text, /ghost\.db: \d+ conversation/);
+  assert.match(text, /🛡️ Replies are checked for self-harm by keywords and by the chat model/);
   assert.match(text, /The message log is kept until you delete it\./);
 });
 
