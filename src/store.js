@@ -174,6 +174,12 @@ export function deleteReminder(id) {
   database().prepare('DELETE FROM reminders WHERE id = ?').run(id);
 }
 
+// How much is stored, for /status.
+export function counts() {
+  const count = table => database().prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n;
+  return { conversations: count('channel_state'), facts: count('user_facts'), reminders: count('reminders') };
+}
+
 // Only theirs: anyone can try any number. Returns whether there was one to delete.
 export function deleteReminderFor(userId, id) {
   return database().prepare('DELETE FROM reminders WHERE id = ? AND user_id = ?').run(id, userId).changes > 0;

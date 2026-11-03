@@ -63,6 +63,12 @@ async function embed(text) {
   return (await embedBatch([text]))[0];
 }
 
+// How many scenes she can search, for /status: all of them, and those left once the
+// late reveals are filtered out. Zero means no index, or one built with another model.
+export function sceneCounts() {
+  return { total: loadIndex().length, usable: allowedChunks().length };
+}
+
 // Loads the embedding model, and the scene index with it, before the first message.
 export async function warmUpRetrieval() {
   loadIndex();

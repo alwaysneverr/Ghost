@@ -16,6 +16,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOG_DIR = process.env.GHOST_LOG_DIR || join(__dirname, '..', 'data', 'logs');
 const LOG_PATH = join(LOG_DIR, 'conversations.jsonl');
 const MESSAGE_LOG_PATH = join(LOG_DIR, 'messages.jsonl');
+export const LOG_FILES = [LOG_PATH, MESSAGE_LOG_PATH];
 
 
 const MAX_CONSOLE_TEXT = 200;
