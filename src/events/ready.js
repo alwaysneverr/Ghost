@@ -1,5 +1,6 @@
 import { Events, ActivityType } from 'discord.js';
 import { restoreReminders } from '../reminders.js';
+import { startLogPruning } from '../logger.js';
 import { warmUp } from '../llm.js';
 import { warmUpRetrieval } from '../rag.js';
 
@@ -36,6 +37,7 @@ export default {
       },
     });
     restoreReminders(client);
+    startLogPruning();
     loadModels();
   },
 };

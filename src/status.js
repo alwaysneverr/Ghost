@@ -7,7 +7,7 @@ import { existsSync, readFileSync, statSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { EMBED_MODEL, OLLAMA_KEEP_ALIVE, OLLAMA_URL } from './ollama.js';
-import { LOG_FILES } from './logger.js';
+import { LOG_FILES, MESSAGE_LOG_DAYS } from './logger.js';
 import { sceneCounts } from './rag.js';
 import { counts } from './store.js';
 
@@ -66,6 +66,7 @@ export async function gatherStatus(client) {
     scenes: safely(sceneCounts),
     stored: safely(counts),
     logs: LOG_FILES.map(path => ({ name: basename(path), bytes: existsSync(path) ? statSync(path).size : 0 })),
+    messageLogDays: MESSAGE_LOG_DAYS,
     process: { node: process.version, version: VERSION, memoryBytes: process.memoryUsage().rss },
   };
 }

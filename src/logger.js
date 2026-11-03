@@ -4,7 +4,7 @@
  * everything people send her to a separate one, for keeping an eye on the bot.
  */
 
-import { appendFileSync, existsSync, mkdirSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { MessageFlags } from 'discord.js';
@@ -18,6 +18,12 @@ const LOG_PATH = join(LOG_DIR, 'conversations.jsonl');
 const MESSAGE_LOG_PATH = join(LOG_DIR, 'messages.jsonl');
 export const LOG_FILES = [LOG_PATH, MESSAGE_LOG_PATH];
 
+// MESSAGE_LOG_DAYS deletes entries older than that from messages.jsonl. Unset, it keeps
+// everything, so turning it on is the owner's choice. conversations.jsonl isn't
+// touched: it's the training data, and ratings point back into it.
+const days = Number(process.env.MESSAGE_LOG_DAYS);
+export const MESSAGE_LOG_DAYS = days > 0 ? days : null;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const MAX_CONSOLE_TEXT = 200;
 
@@ -152,4 +158,43 @@ export function logRating({ messageId, rating, raterId }) {
     rating, // 'up' | 'down'
     raterId,
   }) + '\n');
+}
+
+// Deletes messages.jsonl entries older than MESSAGE_LOG_DAYS, and returns how many.
+// A line it can't read or date is kept, since this only deletes what it's sure is old.
+// Written to a new file and swapped in, so a crash can't leave half a log.
+export function pruneMessageLog({ days = MESSAGE_LOG_DAYS, now = Date.now() } = {}) {
+  if (!days || !existsSync(MESSAGE_LOG_PATH)) return 0;
+  const cutoff = now - days * DAY_MS;
+  const lines = readFileSync(MESSAGE_LOG_PATH, 'utf-8').split('\n').filter(Boolean);
+  const kept = lines.filter(line => {
+    try {
+      const time = Date.parse(JSON.parse(line).timestamp);
+      return Number.isNaN(time) || time >= cutoff;
+    } catch {
+      return true;
+    }
+  });
+  if (kept.length === lines.length) return 0;
+
+  const temp = `${MESSAGE_LOG_PATH}.tmp`;
+  writeFileSync(temp, kept.map(line => `${line}\n`).join(''));
+  renameSync(temp, MESSAGE_LOG_PATH);
+  return lines.length - kept.length;
+}
+
+// When the bot starts, and once a day after. A failure, like the file being open in an
+// editor, waits for the next day rather than stopping her.
+export function startLogPruning() {
+  if (!MESSAGE_LOG_DAYS) return;
+  const prune = () => {
+    try {
+      const removed = pruneMessageLog();
+      if (removed > 0) console.log(`🧹 Removed ${removed} message log entries older than ${MESSAGE_LOG_DAYS} day(s).`);
+    } catch (error) {
+      console.warn('⚠️  Could not clear old message log entries:', error.message);
+    }
+  };
+  prune();
+  setInterval(prune, DAY_MS).unref();
 }
