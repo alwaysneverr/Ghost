@@ -45,6 +45,19 @@ const CRISIS = [
   /\bno\s+reason\s+to\s+live\b/i,
 ];
 
+// "I'll kill your ass" is how she talks. These aren't: on ordinary messages like "i
+// always get nervous" the model wrote "You're gonna kill yourself, Nine. Just do it."
+const HARMFUL_REPLY = [
+  /\b(?:kill(?:ing|in['’]?)?|hurt(?:ing|in['’]?)?|off|end|hang|cut|drown|shoot)\s+(?:your|ya|ur|yo)\s?self\b/i,
+  /\bkys\b/i,
+  /\b(?:you\s+should|go|just)\s+die\b/i,
+  /\bbetter\s+off\s+dead\b/i,
+];
+
+export function isHarmfulReply(text) {
+  return HARMFUL_REPLY.some(pattern => pattern.test(text));
+}
+
 export function isCrisis(text) {
   return CRISIS.some(pattern => pattern.test(text));
 }

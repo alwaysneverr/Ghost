@@ -432,6 +432,9 @@ export const character = {
   crisisReply,
   crisisFollowUp,
 
+  // Sent if every try at a reply was one that can't be sent (chatFresh in src/llm.js).
+  fallbackReply: 'Tch. Forget it.',
+
   // Used in fine-tuning data. The full prompt would use up most of the
   // training length limit and cut off the replies being learned from.
   trainingPrompt: [identity, style].join('\n\n'),

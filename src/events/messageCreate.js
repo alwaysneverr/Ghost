@@ -1,7 +1,7 @@
 import { Events } from 'discord.js';
 import { character } from '../character.js';
 import { buildSystemPrompt } from '../rag.js';
-import { chatFresh } from '../llm.js';
+import { chatFresh, recentStart } from '../llm.js';
 import { logExchange, logMessage } from '../logger.js';
 import { isCrisis, inCrisis, needsGentleReply } from '../safety.js';
 import { getChannel, getFacts, saveChannel } from '../store.js';
@@ -149,7 +149,12 @@ export default {
         const remembered = MEMORY_ENABLED ? getFacts(message.author.id, scope, MAX_REMEMBERED) : [];
         const modelMessages = toModelMessages(history);
         const isGroup = modelMessages.some((m, i) => m.content !== history[i].content);
-        const { prompt, factual } = await buildSystemPrompt(
+        // Someone hurting gets a prompt with no room for anything else, so they keep
+        // the whole conversation.
+        const gentle = needsGentleReply(userMessages);
+        const start = gentle ? 0 : recentStart(history);
+        const earlier = history.slice(0, start).filter(m => m.role === 'user').map(m => m.content);
+        const { prompt, factual, scripted } = await buildSystemPrompt(
           content,
           RAG_TOP_K,
           userMessages,
@@ -159,16 +164,19 @@ export default {
                 speaker,
                 recent: history.filter(m => m.role === 'user' && m !== theirMessage).slice(-MAX_GROUP_LINES),
               }
-            : null
+            : null,
+          isGroup ? [] : earlier
         );
         // Nothing half-written on someone's worst day.
-        if (STREAM_REPLIES && !needsGentleReply(userMessages)) streamer = createStreamer(message);
-        reply = await chatFresh([{ role: 'system', content: prompt }, ...modelMessages], {
+        if (STREAM_REPLIES && !gentle) streamer = createStreamer(message);
+        reply = await chatFresh([{ role: 'system', content: prompt }, ...modelMessages.slice(start)], {
           pastReplies: channel.pastReplies,
           factual,
+          scripted,
+          gentle,
           onToken: streamer?.update,
         });
-        if (!needsGentleReply(userMessages)) reply = maybeAddName(reply);
+        if (!gentle) reply = maybeAddName(reply);
         channel.pastReplies = [...channel.pastReplies, reply].slice(-MAX_PAST_REPLIES);
       }
 

@@ -251,15 +251,21 @@ function sceneQuery(content, userMessages) {
 // What she remembers about the speaker goes early, not last: she recites whatever
 // she read most recently, and this should only come up when it's relevant.
 // group is { speaker, recent }, when several people share this conversation.
-// Returns the prompt, and whether it has facts she needs to repeat (see chatFresh).
+// earlier is what they said before the turns the model sees (see recentStart in
+// llm.js). It goes early for the same reason, so she doesn't answer it all over again.
+// Returns the prompt, whether it has facts she needs to repeat, and whether a hint
+// tells her what to say (see chatFresh).
 export async function buildSystemPrompt(
   content,
   topK,
   userMessages = [content],
   remembered = [],
-  group = null
+  group = null,
+  earlier = []
 ) {
-  if (needsGentleReply(userMessages)) return { prompt: character.griefPrompt, factual: false };
+  if (needsGentleReply(userMessages)) {
+    return { prompt: character.griefPrompt, factual: false, scripted: false };
+  }
 
   const situation = character.situations.find(s => s.match.test(content));
   const hint = situation ? `\n${situation.hint}` : '';
@@ -292,6 +298,12 @@ export async function buildSystemPrompt(
           .map(fact => `- ${fact}`)
           .join('\n')}`
       : '';
+  const earlierBlock =
+    earlier.length > 0
+      ? `\n\nWhat they've told you earlier in this conversation. Bring it up only if it's relevant:\n${earlier
+          .map(line => `- ${line}`)
+          .join('\n')}`
+      : '';
 
   // Goes last, because the names in history alone weren't enough: she told Ben about
   // "your cat" when the cat was Ana's. It has to say whose "my" this is.
@@ -303,7 +315,8 @@ export async function buildSystemPrompt(
   const speaker = group?.speaker ?? 'Nine';
 
   return {
-    prompt: `${character.systemPrompt}${rememberedBlock}${referenceBlock}\n\n${character.validation}${factBlock}${groupBlock}\n\n${speaker} just said: ${content}${hint}`,
+    prompt: `${character.systemPrompt}${rememberedBlock}${earlierBlock}${referenceBlock}\n\n${character.validation}${factBlock}${groupBlock}\n\n${speaker} just said: ${content}${hint}`,
     factual: factBlock !== '',
+    scripted: Boolean(situation),
   };
 }

@@ -3,6 +3,9 @@
  * (messageCreate.js, memory.js) and scripts/eval-prompts.js.
  */
 
+import { character } from './character.js';
+import { isHarmfulReply } from './safety.js';
+
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3:8b';
 
@@ -42,6 +45,16 @@ const SAME_REPLY_OVERLAP = 0.6;
 const OPENER_LOOKBACK = 3;
 // A sentence this long, found word for word in the prompt, counts as copied.
 const MIN_COPIED_WORDS = 4;
+// A run of this many words, in one of her last few replies, counts as a habit.
+const PHRASE_WORDS = 3;
+const PHRASE_LOOKBACK = 8;
+// How many replies she has to go between bringing up Captain unprompted.
+const CAPTAIN_LOOKBACK = 4;
+const CAPTAIN = /\b(?:captain|cap['’]?n|kakeru)\b/i;
+// "Whatever, Cap'n." Captain is Kakeru, and whoever she's talking to is Nine.
+const CALLS_THEM_CAPTAIN = /,\s*(?:captain|cap['’]?n)\s*(?:[.!?…,]|$)/i;
+// How many of her latest replies the model gets to see.
+const RECENT_EXCHANGES = 3;
 
 // A reply cut off at the limit would end mid-sentence, so end it at the last
 // complete one. Left alone if it has none.
@@ -80,58 +93,141 @@ function copiesPrompt(reply, promptWords) {
     .some(sentence => sentence.split(' ').length >= MIN_COPIED_WORDS && promptWords.includes(sentence));
 }
 
+function phrasesOf(text) {
+  const words = wordsOf(text);
+  return words
+    .slice(0, Math.max(0, words.length - PHRASE_WORDS + 1))
+    .map((_, i) => words.slice(i, i + PHRASE_WORDS).join(' '));
+}
+
+// Whether Captain is fair game: they named him, asked who, or said "he" right after she
+// brought him up. "My boss... he does this every week" doesn't count.
+function captainFits(theirWords, lastReply) {
+  const last = theirWords.at(-1);
+  return (
+    theirWords.some(words => CAPTAIN.test(words)) ||
+    /^(?:\w+\s+)?who\b/i.test(last) ||
+    (/\b(?:he|him|his)\b/i.test(last) && CAPTAIN.test(lastReply))
+  );
+}
+
+// Whole-reply overlap can't see her settling into a habit: "You wanna fight, say so.
+// Otherwise, shut up." and "Cap'n don't do cringe. Otherwise, shut up." are different
+// replies, and that tail is what people notice. A habit here is a sentence that reuses
+// a recent phrase, calls them Captain, or brings him up again when she only just did.
+// Those get cut from the end of the reply. If it opens on one, returns '' and it needs
+// another try, because the answer is usually up front: cutting it left stray tails
+// like "Dumbass." Answers the prompt dictates (mustAnswer) always keep their opening,
+// and can name Captain as often as they need to.
+function dropHabits(reply, earlierReplies, theirWords, mustAnswer) {
+  const recent = [...new Set(earlierReplies)];
+  const usedPhrases = new Set(recent.slice(-PHRASE_LOOKBACK).flatMap(phrasesOf));
+  const captainTooSoon =
+    !mustAnswer &&
+    !captainFits(theirWords, recent.at(-1) ?? '') &&
+    recent.slice(-CAPTAIN_LOOKBACK).some(earlier => CAPTAIN.test(earlier));
+  const isHabit = sentence =>
+    CALLS_THEM_CAPTAIN.test(sentence) ||
+    phrasesOf(sentence).some(phrase => usedPhrases.has(phrase)) ||
+    (captainTooSoon && CAPTAIN.test(sentence));
+
+  const [first, ...rest] = reply.split(/(?<=[.!?…])\s+/);
+  if (!mustAnswer && isHabit(first)) return '';
+  return [first, ...rest.filter(sentence => !isHabit(sentence))].join(' ');
+}
+
 // How much a reply repeats what she's already said, from 0 (new) to 1 (a copy).
 function staleness(reply, earlierReplies, promptWords) {
   if (copiesPrompt(reply, promptWords)) return 1;
 
   const closest = Math.max(0, ...earlierReplies.map(earlier => overlap(reply, earlier)));
-  const sameOpener = earlierReplies.slice(-OPENER_LOOKBACK).some(e => opener(e) === opener(reply));
+  // "7" has no words to open on, and that doesn't make it the same as the last "7".
+  const start = opener(reply);
+  const sameOpener = start && earlierReplies.slice(-OPENER_LOOKBACK).some(e => opener(e) === start);
   return sameOpener ? Math.max(closest, SAME_REPLY_OVERLAP) : closest;
 }
 
-// chat(), but tries again if she repeats herself or copies a line from the prompt.
-// Sampling alone only makes that less likely: on a message like "haha ok" she'd
-// re-send an earlier reply whole. pastReplies can reach further back than the
-// messages sent to the model. If every try repeats, sends the least repetitive.
+// Where in history the turns sent to the model start. She picks up the habits of
+// whatever replies she can see, so a conversation that started badly stayed bad:
+// with one channel's history she brought up Captain in 11 of 12 replies, and with
+// none in 4 of 12. Whole exchanges, because her replies going missing leaves a pile of
+// unanswered messages and she answers the old ones. Their older messages still reach
+// her, through the prompt (see buildSystemPrompt).
+export function recentStart(history) {
+  let replies = 0;
+  for (let i = history.length - 1; i > 0; i--) {
+    if (history[i].role === 'assistant' && ++replies === RECENT_EXCHANGES) {
+      while (i > 0 && history[i - 1].role === 'user') i--;
+      return i;
+    }
+  }
+  return 0;
+}
+
+// chat(), but tries again if she repeats herself or copies a line from the prompt,
+// and never sends one telling them to harm themselves. Sampling alone only makes that
+// less likely: on a message like "haha ok" she'd re-send an earlier reply whole.
+// pastReplies can reach further back than the messages sent to the model. If every try
+// repeats, sends the least repetitive.
 // factual turns the repetition penalty off: it covers the end of the prompt, so it
 // was steering her away from the very names and words in the fact cards.
+// scripted means the prompt tells her what to say to this one (a situation's hint).
+// gentle is for someone hurting: it leaves her words alone and keeps what they told
+// her in front of her on a retry, since that's all that prompt has to go on.
 // onToken only covers the first try: a retry's text arrives whole, replacing it.
 export async function chatFresh(
   messages,
-  { model = OLLAMA_MODEL, pastReplies = [], factual = false, onToken = null } = {},
+  {
+    model = OLLAMA_MODEL,
+    pastReplies = [],
+    factual = false,
+    scripted = false,
+    gentle = false,
+    onToken = null,
+  } = {},
 ) {
   const earlierReplies = [
     ...pastReplies,
     ...messages.filter(m => m.role === 'assistant').map(m => m.content),
   ];
   const promptWords = wordsOf(messages[0].content).join(' ');
+  const theirWords = messages.filter(m => m.role === 'user').slice(-2).map(m => m.content);
 
-  const [system, ...conversation] = messages;
-  let attemptMessages = messages;
+  // Each retry sees less of what she's said: first only the last exchange, so "does it
+  // hurt?" still means something, then only their message. Quoting the reply she'd just
+  // given and asking for "nothing like" it made things worse: 32 of 42 retries sent that
+  // same reply back word for word, because it was the last thing she'd read.
+  const lastExchange = messages.slice(1).slice(-3);
+  while (lastExchange[0]?.role === 'assistant') lastExchange.shift();
+  const attempts = gentle
+    ? [messages, messages, messages]
+    : [messages, [messages[0], ...lastExchange], [messages[0], messages.at(-1)]];
+
   let best = null;
   let bestScore = Infinity;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const temperature = SAMPLING.temperature + attempt * RETRY_TEMPERATURE_STEP;
-    const reply = await chat(
-      attemptMessages,
+    const raw = await chat(
+      attempts[attempt],
       model,
       temperature,
       factual ? 1 : SAMPLING.repeat_penalty,
       attempt === 0 ? onToken : null,
     );
-    const score = staleness(reply, earlierReplies, promptWords);
+    if (isHarmfulReply(raw)) continue;
+
+    const kept = gentle ? raw : dropHabits(raw, earlierReplies, theirWords, factual || scripted);
+    const reply = kept || raw;
+    const score = kept
+      ? staleness(reply, earlierReplies, promptWords)
+      : Math.max(staleness(reply, earlierReplies, promptWords), SAME_REPLY_OVERLAP);
     if (score < SAME_REPLY_OVERLAP) return reply;
     if (score < bestScore) {
       best = reply;
       bestScore = score;
     }
-    // Different dice alone won't shift an answer the model really likes.
-    attemptMessages = [
-      { ...system, content: `${system.content}\n\nReply to them in fresh words, nothing like: ${reply}` },
-      ...conversation,
-    ];
   }
-  return best;
+  return best ?? character.fallbackReply;
 }
 
 // For the model as a tool, not as her: a JSON answer matching schema, with no
