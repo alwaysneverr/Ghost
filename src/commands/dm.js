@@ -4,23 +4,8 @@ import {
   ApplicationIntegrationType,
   MessageFlags,
   RESTJSONErrorCodes,
-  TeamMemberMembershipState,
-  TeamMemberRole,
 } from 'discord.js';
-
-// Whoever owns the application on Discord or, if a team does, its owner and the admins
-// who've accepted their invite. Asks Discord rather than a setting, so there's nothing
-// to get wrong, and if the question fails the command fails with it.
-async function canSendDMs(client, userId) {
-  const { owner } = await client.application.fetch();
-  if (userId === (owner?.ownerId ?? owner?.id)) return true;
-
-  const member = owner?.members?.get(userId);
-  return (
-    member?.role === TeamMemberRole.Admin &&
-    member.membershipState === TeamMemberMembershipState.Accepted
-  );
-}
+import { isBotAdmin } from '../access.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -48,7 +33,7 @@ export default {
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    if (!(await canSendDMs(interaction.client, interaction.user.id))) {
+    if (!(await isBotAdmin(interaction.client, interaction.user.id))) {
       console.warn(`🚫 ${interaction.user.username} (${interaction.user.id}) tried to use /dm.`);
       await interaction.editReply(`Nice try, Nine. That one's not for you.`);
       return;
