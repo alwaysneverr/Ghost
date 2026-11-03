@@ -17,6 +17,9 @@
     "rag:check": "node scripts/rag-check.js",
     "eval": "node scripts/eval-prompts.js",
     "eval:holdout": "node scripts/eval-holdout.js",
+    "eval:conversations": "node scripts/eval-conversations.js",
+    "eval:facts": "node scripts/eval-facts.js",
+    "test": "node --test --test-concurrency=1 \"test/*.test.js\"",
     "lint": "eslint ."
   },
   "engines": {

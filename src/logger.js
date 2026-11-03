@@ -12,7 +12,8 @@ import { needsGentleReply } from './safety.js';
 import { getChannel } from './store.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const LOG_DIR = join(__dirname, '..', 'data', 'logs');
+// GHOST_LOG_DIR moves them, which the tests use to stay out of the real logs.
+const LOG_DIR = process.env.GHOST_LOG_DIR || join(__dirname, '..', 'data', 'logs');
 const LOG_PATH = join(LOG_DIR, 'conversations.jsonl');
 const MESSAGE_LOG_PATH = join(LOG_DIR, 'messages.jsonl');
 
