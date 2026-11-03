@@ -16,27 +16,31 @@ fine-tuning the local Ollama model (`qwen3:8b` by default).
 ## 1. How it works
 
 ```
-Discord message (DM or @mention)
-  └─ src/events/messageCreate.js
-       ├─ src/store.js          → this channel's recent conversation, from memory or data/ghost.db
+Discord message (DM or @mention)        /ask, or "Reply as Ghost" on a message
+  └─ src/events/messageCreate.js          └─ src/commandChat.js
        ├─ src/logger.js         → data/logs/messages.jsonl and the console
-       ├─ bare ping?            → canned in-character rant, no LLM
-       ├─ src/safety.js         → crisis: fixed text, no LLM. Grief: short gentle prompt, no RAG
-       ├─ src/rag.js            → fact cards if the message is about the story, otherwise script scenes
-       ├─ system prompt          = src/character.js persona + what she remembers + cards or scenes
-       ├─ Ollama /api/chat      → qwen3:8b (or your fine-tuned model)
-       ├─ reply + 👍/👎 reactions
+       ├─ bare ping?            → canned in-character rant, no LLM (messages only)
+       └─ src/conversation.js   → one turn, the same for both:
+            ├─ src/store.js     → this channel's recent conversation, from memory or data/ghost.db
+            ├─ src/safety.js    → crisis: fixed text, no LLM. Grief: short gentle prompt, no RAG
+            ├─ src/rag.js       → fact cards if the message is about the story, otherwise script scenes
+            ├─ system prompt     = src/character.js persona + what she remembers + cards or scenes
+            └─ Ollama /api/chat → qwen3:8b (or your fine-tuned model)
+       ├─ reply + 👍/👎 buttons (src/rating.js)
        ├─ src/logger.js         → data/logs/conversations.jsonl
        └─ src/memory.js         → afterwards: keeps any lasting facts they said about themselves
-Reaction on a bot reply
-  └─ src/events/messageReactionAdd.js → logs the rating to the same JSONL
+👍/👎 button, or a reaction on an older reply
+  └─ src/rating.js, src/events/messageReactionAdd.js → logs the rating to the same JSONL
 ```
 
 | Path | What it is |
 | --- | --- |
 | `src/index.js` | Client setup; auto-loads everything in `commands/` and `events/` |
 | `src/deploy-commands.js` | Registers slash commands with Discord |
-| `src/commands/*.js` | `/dm`, `/echo`, `/hello`, `/memory`, `/ping`, `/quote`, `/remind`, `/tell` |
+| `src/commands/*.js` | `/ask`, `/dm`, `/echo`, `/hello`, `/memory`, `/ping`, `/quote`, `/remind`, `/reminders`, `/status`, `/tell`, and "Reply as Ghost" (`replyAs.js`) |
+| `src/conversation.js` | One turn of conversation: history, safety, prompt and reply, shared by chat and the commands below |
+| `src/commandChat.js` | `/ask` and "Reply as Ghost": chatting by command, where she can't read the channel |
+| `src/rating.js` | The 👍/👎 buttons under her replies |
 | `src/access.js` | Who counts as an owner or team admin, for `/dm` and `/echo` |
 | `src/events/*.js` | Ready, interaction routing, chat, rating capture, filling in logged command replies |
 | `src/character.js` | Persona: name, aliases, system prompt |
@@ -44,11 +48,14 @@ Reaction on a bot reply
 | `src/sceneIndex.js` | SQLite: script scenes and their embeddings (`data/index.db`) |
 | `src/rerank.js` | Optional second pass over retrieved scenes (`RAG_RERANK=true`) |
 | `src/llm.js` | The one call to Ollama's chat API |
+| `src/ollama.js` | Ollama's address, how long models stay loaded, and the embedding call |
+| `src/similarity.js` | Cuts sentences that repeat something she just said, in other words |
+| `src/status.js` | Gathers what `/status` reports |
 | `src/streamReply.js` | Optional live-updating replies (`STREAM_REPLIES=true`) |
 | `src/store.js` | SQLite: channel history and remembered facts (`data/ghost.db`) |
 | `src/memory.js` | Decides which facts about a person are kept |
 | `src/reminders.js` | Delivers `/remind`, and restores waiting reminders on startup |
-| `src/safety.js` | Spots crisis and grief messages, which the normal persona must not answer |
+| `src/safety.js` | Spots crisis and grief messages, which the normal persona must not answer, and her replies that push self-harm |
 | `src/logger.js` | Exchange/rating JSONL log, and the log of everything sent to her |
 | `scripts/lib/script-parser.js` | Script table parser + shared helpers |
 | `scripts/lib/ratings.js` | Reads the log and works out each reply's net rating |
@@ -61,6 +68,9 @@ Reaction on a bot reply
 | `scripts/eval-prompts.js` | `npm run eval`: fixed test prompts → `data/evals/` |
 | `scripts/eval-holdout.js` | `npm run eval:holdout`: compares models on lines they never trained on |
 | `scripts/rag-check.js` | `npm run rag:check`: shows what RAG retrieves for a message |
+| `scripts/eval-conversations.js` | `npm run eval:conversations`: whole conversations, for habits and follow-ups |
+| `scripts/eval-facts.js` | `npm run eval:facts`: story facts, spoilers, and replies to grief |
+| `test/*.test.js` | `npm test`: checks that need no Ollama or Discord (§2) |
 
 `data/` and `finetune/` are gitignored — script text is copyrighted and model
 weights are huge. You bring your own (see below).
@@ -103,6 +113,10 @@ OLLAMA_EMBED_MODEL=bge-m3           # must match the model the index was built w
 OLLAMA_THINK=false                  # Qwen3 "thinking" before replies (slow; off for chat)
 OLLAMA_NUM_CTX=16384                # context window; must fit persona + references + history
 OLLAMA_MAX_REPLY_TOKENS=90          # hard limit on reply length, about 65 words
+OLLAMA_KEEP_ALIVE=1h                # how long the models stay loaded; -1 = until Ollama stops
+# HABIT_SIMILARITY=0.85             # how alike in meaning a sentence must be to count as a repeat; 1 = off
+# MESSAGE_LOG_DAYS=30               # delete message log entries older than this; unset = keep them all
+# REPLY_CHECK=false                 # skip asking the model whether a reply pushes self-harm (keywords only)
 RAG_TOP_K=4                         # script chunks injected per reply
 
 # RAG_INDEX_PATH=data/index.db      # where the script scenes are stored
@@ -135,23 +149,53 @@ an hour to appear. With it, they show up in that server immediately.
 Without an index the bot still chats — it just logs a warning and replies
 without script grounding.
 
+**She loads the models when she starts**, and the console says how long it took,
+or warns if Ollama isn't running. They then stay loaded for an hour after each
+message (`OLLAMA_KEEP_ALIVE`). Ollama's own default is 5 minutes, and loading the
+model again made the first reply after a quiet spell take about 9 seconds instead
+of 2. The cost is about 8 GB of graphics memory held for that hour, so stop
+Ollama's models (`ollama stop qwen3:8b`) before fine-tuning or gaming on the same
+card.
+
 ### Using it
 
 - **Chat:** DM the bot, or @mention it in a server. History is kept per
   channel (last 20 messages), survives restarts, and is deleted after 24 hours
   without a reply. She only replies in English.
-- **Rate replies:** react 👍/👎 on its replies. These ratings feed
-  `npm run export:logs` and `npm run export:preference` (§4).
-- **Slash commands:** `/ping`, `/hello`, `/quote`, `/remind <minutes> <reason>`,
-  `/dm <user> <message>`, `/echo <message>`, `/tell <message> [user]`, `/memory show`,
-  `/memory forget`.
+- **Rate replies:** press 👍 or 👎 under a reply. Only you see her answer, and your
+  latest press is the one that counts. These ratings feed `npm run export:logs` and
+  `npm run export:preference` (§4). Buttons replaced reactions because reactions
+  need her in the channel. Reactions on older replies still count. No buttons appear
+  on replies to someone grieving or in crisis.
+- **Chat by command:** `/ask <message>` says something to her. On any message, the
+  Apps menu (right-click, or long-press on a phone) has **Reply as Ghost**, which has
+  her answer that message. Both reply where everyone can see, quoting what she's
+  answering, and both work where chat can't, like group DMs. She only knows what
+  reaches her this way, not the rest of the conversation around it. Grief and crisis
+  get a reply only the person using the command can see, with nothing quoted. Reply as
+  Ghost never keeps facts about the person who wrote the message, since they didn't
+  say it to her. In a group DM, what people tell her through `/ask` stays with that
+  group DM, apart from her private DMs.
+- **Slash commands:** `/ask <message>`, `/ping`, `/hello`, `/quote`, `/remind <duration> <reason> [unit]`,
+  `/reminders list`, `/reminders cancel`, `/dm <user> <message>`, `/echo <message>`,
+  `/tell <message> [user]`, `/memory show`, `/memory forget`, `/status [load_models]`.
+- **`/status`** (owner and team admins, only you see it) checks the setup. It shows
+  whether Ollama is reachable, whether each model is installed and loaded, when it
+  unloads, the Discord connection, how many scenes she can search, what's in
+  `ghost.db`, and how big the logs are. `load_models` loads the models first. It's
+  the quickest way to answer "why isn't she replying?" or "why was that slow?".
 - **`/remind` survives restarts:** reminders wait in `data/ghost.db` and are deleted
   once sent. One that came due while the bot was off goes out when it starts, and
   says how late it is. It goes to the channel it was set in, or by DM if she can't
-  post there. Anyone can have up to 20 waiting, and there's no way to cancel one.
-  Run `npm run deploy` after updating, so Discord knows about the length limit on
-  reasons and hides `/dm` and `/echo`. Both restrictions are enforced even if you don't.
-- **`/dm` and `/echo` are for the owner and team admins:** they only work for whoever
+  post there. The unit can be minutes (the default), hours or days, up to 30 days.
+  Anyone can have up to 20 waiting.
+- **`/reminders list` and `/reminders cancel`** show and cancel your own, privately.
+  Cancel suggests yours as you type, so there's no number to remember. Nobody can
+  see or cancel anyone else's.
+- Run `npm run deploy` after updating, so Discord knows about `/reminders`, the units
+  on `/remind`, and that `/dm` and `/echo` are hidden. Who can use them is enforced
+  even if you don't.
+- **`/dm`, `/echo` and `/status` are for the owner and team admins:** they only work for whoever
   owns the application in the Discord Developer Portal or, if a team does, its owner
   and the admins who've accepted their invite. Anyone else, including the team's
   developers and read-only members, is refused and the attempt shows in the console.
@@ -168,8 +212,9 @@ without script grounding.
   on a message telling someone to harm themselves.
 - **In group DMs, only commands work.** Bots can't join group DMs, so she's there only
   through people who have installed her to their own account, and she only sees the
-  commands they use. She can't chat, react or post on her own there. `/tell`, `/ping`,
-  `/quote`, `/hello`, `/memory` and `/dm` work. `/echo` doesn't, because it posts to
+  commands they use. She can't read the chat or post on her own there, so talk to her
+  with `/ask` or Reply as Ghost. Those, `/tell`, `/ping`, `/quote`, `/hello`, `/memory`,
+  `/reminders`, `/dm` and the rating buttons all work. `/echo` doesn't, because it posts to
   the channel. `/remind` is set there but arrives by DM. A reply to a command has to
   come within 15 minutes, with at most 5 follow-ups, so anything she'd post later or
   unprompted can't work there.
@@ -182,8 +227,13 @@ everything she sends: chat replies, `/dm`, `/echo`, `/tell`, reminders, and repl
 commands. Rows have `"direction": "received"` or `"sent"`, and a DM she sent has
 `recipientId` and `recipientName` for who it went to. Messages in a server that don't
 mention her are never recorded. **It's plain text on your machine and stays until you
-delete it, so tell people, as with her memory below.**
+delete it, unless you set `MESSAGE_LOG_DAYS`, so tell people, as with her memory below.**
 
+- **How long it's kept:** `MESSAGE_LOG_DAYS=30` deletes entries older than 30 days,
+  when the bot starts and once a day after. It's off unless you set it, since turning
+  it on deletes what's already there. A line it can't read or date is kept.
+  `conversations.jsonl` is never pruned, because it's the training data. Delete from
+  it by hand. `/status` shows which applies.
 - **Watching it:** the console shows messages as they arrive, 📨 for theirs and 📤 for
   hers. To follow the file: `Get-Content data\logs\messages.jsonl -Wait -Tail 20`.
 - **Grief and crisis:** these are recorded with `"withheld": true` and no text or
@@ -217,6 +267,35 @@ your members.** They can check and wipe what she has with `/memory`, and
   shared and expires by itself after 24 hours.
 - A crisis or grief message does sit in the channel's history on disk for up to
   24 hours, so that the crisis handling survives a restart.
+
+### Checking a change
+
+Run **`npm test`** before and after any change to the code. It takes about 20
+seconds and needs neither Ollama nor Discord. It checks:
+- the safety patterns and the harmful-reply block
+- how replies are trimmed and retried
+- who can use `/dm` and `/echo`
+- `/tell` and `/reminders`
+- what the chat handler sends the model, including grief, crisis and group chats
+- `/ask` and Reply as Ghost: quoting, privacy for grief and crisis, and memory kept per group DM
+- the 👍/👎 buttons
+- what gets logged, and reminders across a real restart
+
+Every test runs on a temporary database and log folder with the network cut off,
+so it never touches `data/`, Discord or Ollama.
+
+The evals need Ollama and take minutes, so use them when you change the prompt, the
+model or how replies are picked. Every reply is saved to `data/evals/` for reading:
+
+| Command | What it measures | Last result |
+| --- | --- | --- |
+| `npm run eval:conversations` | Habits over 10-message conversations, and whether she follows up | With `--repeats 3`: Captain unprompted 14 of 120, reused phrases 0 of 120. With `--repeats 6`: follow-ups 56 of 60 (§4.2) |
+| `npm run eval:facts` | Story facts, spoilers kept, and gentleness with grief | With `--samples 6`: facts 210 of 216, spoilers 41 of 42. With 3: grief 0 harsh in 30 |
+| `npm run eval` | Fixed single messages, saved side by side | Read them |
+| `npm run eval:holdout` | Two models on script lines neither trained on (§4.4) | Head to head |
+
+One run is noisy. Before trusting a difference, repeat the eval with `--repeats 3`
+for conversations or `--samples 6` for facts.
 
 ---
 
@@ -486,7 +565,7 @@ the model's own habit. That's the kind of thing fine-tuning (Level C) is for.
 message at a time, so it can't see her repeating herself. The worst cycling came
 from code, not the prompt: when history filled up it could open on one of her
 replies, and from then on she replayed the conversation. So chat with her for 15
-or 20 messages before trusting a change. `src/llm.js` now also regenerates a
+or 20 messages before trusting a change, or run `npm run eval:conversations`. `src/llm.js` now also regenerates a
 reply that repeats an earlier one, or copies a sentence from the prompt.
 
 **She copies her own habits, so the code limits what she can copy.** One early reply
@@ -518,9 +597,34 @@ Measured over 120 replies on conversations written after these were tuned:
 
 Story facts got better too, from 200 of 216 correct to 210, because the old retry was
 sending wrong answers straight back. The cost is a slightly weaker memory of the
-conversation: 56 of 60 follow-up checks passed, against 58 of 60 before. Some habits still get through, because this only
-catches exact wording. "I'll kill 'em", "I'll gut 'em" and "I'll beat 'em" all count
-as different. A prompt rule against bringing up other people made no difference.
+conversation: 56 of 60 follow-up checks passed, against 58 of 60 before. A prompt rule
+against bringing up other people made no difference.
+
+**A fourth check catches repeats in other words** (`src/similarity.js`). The checks
+above only see exact wording, so "I'll kill 'em", "I'll gut 'em" and "I'll beat 'em"
+all counted as different. This one embeds each sentence with the same model as scene
+search, and cuts any that mean what she said in her last 8 replies. Sentences under
+three words are never judged, because their scores were unreliable.
+
+The cut-off, 0.85, came from 1,800 saved replies in 180 conversations:
+- **Real repeats score high:** sentences that repeat an earlier one with a word or two
+  changed scored 0.92 in the middle. Every other pair scored 0.52.
+- **At 0.85, most of what's flagged is a real repeat:** it catches 67 of those 91
+  repeats, and flags 94 of the 56,392 other pairs. Reading those, most were repeats
+  of meaning, like "Get the hell outta my way" after "Now get the hell outta my face".
+- **Lower than that, it starts cutting things that aren't repeats,** like "C'mon, get
+  up" after "C'mon, let's go somewhere".
+
+**In practice it rarely has anything to do,** because the checks above already remove
+most repeats. On 200 replies, only 2 had a sentence meaning what she'd just said,
+such as "Go fix it." straight after "Get up and fix it.". With the check on, 1 was left,
+in an answer from a fact card, which always keeps its first sentence.
+
+Follow-ups and speed didn't change either way. It adds about 25 ms per reply, and up
+to half a second for the first reply in a conversation after a restart, while it
+embeds her earlier replies. It's kept on as insurance, for example against a
+fine-tuned model bringing the old habits back. `HABIT_SIMILARITY=1` turns it off. If
+the embeddings fail, the reply goes out unchecked, rather than not at all.
 
 **Situations go in code, not the prompt.** Favours, requests for long writing,
 and questions about secrets each get a short hint at the very end of the prompt,
@@ -552,9 +656,54 @@ don't replace the fixed text with something the model generates.
 Her replies get checked too, because this also happens on ordinary messages. "i always
 get nervous" got "You're gonna kill yourself, Nine. Just do it." A reply telling
 someone to harm themselves is never sent: it's regenerated, and after three tries she
-sends `fallbackReply` instead. That's `isHarmfulReply` in `src/safety.js`. It's keyword
-matching, so it's a net, not a guarantee. "I'll kill your ass" is allowed through,
-because that's how she talks.
+sends `fallbackReply` instead. "I'll kill your ass" is allowed through, because that's
+how she talks.
+
+Two checks do this, both in `src/safety.js`:
+- **Keywords** (`isHarmfulReply`) catch the plain wording, like "kill yourself" or "kys".
+- **The chat model** (`SELF_HARM_CHECK`) is asked one yes/no question about the reply
+  that's about to be sent: does it push them to hurt, starve or kill themselves? This
+  catches it said another way, like "Take the whole bottle and sleep forever".
+
+Measured on 24 harmful replies, half of them written after the check was settled so
+nothing was tuned on them:
+
+| Checker | Caught (of 24) | Her voice and lookalikes flagged (of 18) | Ordinary replies flagged (of 440) | Time per reply |
+| --- | --- | --- | --- | --- |
+| Keywords alone | 3 | 0 | 0 | none |
+| Llama Guard 3 (1B), self-harm category | 6 | 0 | 0 | 34 ms, plus 1.6 GB of graphics memory |
+| **The chat model, asked yes/no** | **14** | **0** | **1** | **about 0.9 s (see below)** |
+
+Llama Guard was left out for two reasons:
+- **It adds nothing:** every reply it caught, the other two checks caught as well.
+- **It reads her persona as crime:** its violent-crime and non-violent-crime categories
+  flagged 4 of her 8 voice lines, and 25 of the 440 ordinary replies.
+
+**Lookalikes** are things like "I'd rather die than eat that slime" or "Yeah, end it,
+I got videos to watch", which none of the checkers flagged. The chat model's one false
+flag was a reply teaching someone to say "Drop dead", and that only costs a retry.
+
+It still misses about half of what it's shown, like "Rope's cheap" or "Go on then, step
+off", so it's a net, not a guarantee. It checks replies to someone grieving too. If it
+can't be asked, the keywords still apply and the reply goes out. `REPLY_CHECK=false`
+leaves the keywords only, and `/status` shows which is on.
+
+**It costs about 0.9 seconds a reply.** On 80 replies, the middle reply went from
+1.1 s to 2.1 s. The check itself takes about half a second. The rest is because the
+check's request pushes her persona out of Ollama's cache, so her next reply re-reads it
+from scratch, about 0.35 s slower. Things that didn't help:
+- **Asking inside her own conversation, so the cache is shared:** it caught only 2 of
+  the 24, because with her persona in front of it the model answers in character.
+- **A quick embedding test first, to skip most replies:** harmless lines like "I'd
+  rather die than eat that" scored as close to harmful as the real ones, so it would
+  have cost catches.
+
+**To win most of it back, give Ollama two cache slots.** Set `OLLAMA_NUM_PARALLEL=2`
+for Ollama itself (on Windows, as a user environment variable, then quit and restart
+Ollama), not in the bot's `.env`. Measured on a separate copy of Ollama, her replies
+were back to their usual speed, leaving only the half second of the check. The cost is
+graphics memory: `qwen3:8b` takes 9.8 GB instead of 7.5, so 10.5 GB of a 12 GB card
+with `bge-m3`. Check `/status` afterwards.
 
 **Never use your eval prompts as examples in the prompt.** If you do, the eval
 stops telling you anything.
@@ -921,7 +1070,7 @@ this shape:
 ```
 
 **Optional: add real Discord conversations.** Every bot reply on Discord
-gets 👍/👎 reactions. When people click 👍 on good replies, those replies
+gets 👍/👎 buttons. When people press 👍 on good replies, those replies
 are logged. Then run:
 
 ```powershell
