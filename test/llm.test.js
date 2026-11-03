@@ -1,14 +1,15 @@
-import { stubOllama } from './helpers/setup.js';
+import { quietly, stubOllama } from './helpers/setup.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chatFresh, recentStart, warmUp } from '../src/llm.js';
 import { character } from '../src/character.js';
 
 // One chatFresh call against canned replies. Returns what she sent and every request.
-async function run(replies, options = {}, history = [{ role: 'user', content: 'hi' }]) {
-  const ollama = stubOllama(replies);
+// stub is passed to stubOllama: which sentences the fake embedding treats as alike.
+async function run(replies, options = {}, history = [{ role: 'user', content: 'hi' }], stub = {}) {
+  const ollama = stubOllama(replies, stub);
   const reply = await chatFresh([{ role: 'system', content: 'prompt' }, ...history], options);
-  return { reply, calls: ollama.calls };
+  return { reply, calls: ollama.calls, embedded: ollama.embedded };
 }
 
 test('a harmful reply is replaced by the next try', async () => {
@@ -77,6 +78,59 @@ test('calling them Captain gets cut, or tried again if that is how it opens', as
   const opening = await run(["Whatever, cap'n.", 'Whatever you say.']);
   assert.equal(opening.reply, 'Whatever you say.');
   assert.equal(opening.calls.length, 2);
+});
+
+test('a sentence meaning what she just said, in other words, is cut', async () => {
+  const { reply } = await run(['Fine, whatever you want. Gonna wreck that guy.'], { pastReplies: ["Back off. I'll beat him senseless."] }, undefined, { sameMeaning: [
+    ['Gonna wreck that guy.', "I'll beat him senseless."],
+  ] });
+  assert.equal(reply, 'Fine, whatever you want.');
+});
+
+test('opening on something she just said in other words is tried again', async () => {
+  const { reply, calls } = await run(
+    ['Stay out of my way, kid. Seriously.', 'Ask me something real then.'],
+    { pastReplies: ['Get lost before I lose it. Get outta my face, kid.'] },
+    undefined,
+    { sameMeaning: [['Stay out of my way, kid.', 'Get outta my face, kid.']] }
+  );
+  assert.equal(reply, 'Ask me something real then.');
+  assert.equal(calls.length, 2);
+});
+
+test('the meaning check leaves short sentences, fact answers and grief alone', async () => {
+  const short = await run(['Tch, fine. Watch your step.'], { pastReplies: ['Tch, okay. Different thing entirely.'] }, undefined, { sameMeaning: [['Tch, fine.', 'Tch, okay.']] });
+  assert.equal(short.reply, 'Tch, fine. Watch your step.');
+
+  const fact = await run(['Noa runs the Valhalla Society.'], { pastReplies: ['Noa leads the whole Valhalla thing.'], factual: true }, undefined, { sameMeaning: [
+    ['Noa runs the Valhalla Society.', 'Noa leads the whole Valhalla thing.'],
+  ] });
+  assert.equal(fact.reply, 'Noa runs the Valhalla Society.');
+
+  const grief = await run(["I'm sorry, that's rough."], { pastReplies: ["I'm real sorry about that."], gentle: true }, undefined, { sameMeaning: [
+    ["I'm sorry, that's rough.", "I'm real sorry about that."],
+  ] });
+  assert.equal(grief.reply, "I'm sorry, that's rough.");
+  assert.equal(grief.embedded.length, 0);
+});
+
+test('the name the bot adds is not part of what she said', async () => {
+  const { embedded } = await run(['Something brand new here.'], { pastReplies: ["What's the plan tonight, Nine?"] });
+  assert.ok(embedded.includes("What's the plan tonight?"));
+});
+
+test('if embeddings fail, the reply still goes out', async () => {
+  const ollama = stubOllama(['Still answering you though.']);
+  const chatOnly = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith('/api/embed')) throw new Error('embed model missing');
+    return chatOnly(url, options);
+  };
+  const { result } = await quietly(() =>
+    chatFresh([{ role: 'system', content: 'prompt' }, { role: 'user', content: 'hi' }], { pastReplies: ['An earlier reply of hers.'] })
+  );
+  assert.equal(result, 'Still answering you though.');
+  assert.equal(ollama.calls.length, 1);
 });
 
 test('a reply with no words is not a repeat', async () => {

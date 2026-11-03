@@ -23,18 +23,31 @@ process.on('exit', () => {
   }
 });
 
+// A made-up embedding: the same text always gets the same vector, and different texts
+// get unrelated ones, unless sameMeaning says two sentences mean the same thing.
+function fakeEmbedding(text, sameMeaning) {
+  const key = sameMeaning.find(group => group.includes(text))?.[0] ?? text;
+  let seed = [...key].reduce((hash, ch) => (hash * 31 + ch.charCodeAt(0)) >>> 0, 7);
+  return Array.from({ length: 64 }, () => {
+    seed = (seed * 1103515245 + 12345) >>> 0;
+    return seed / 2 ** 32 - 0.5;
+  });
+}
+
 // Stands in for Ollama. Chat replies come from `replies` in order, then made-up ones
 // that share no words, so none of them counts as a repeat. Every chat request is kept
-// in `calls`.
-export function stubOllama(replies = []) {
+// in `calls`, and every embedded text in `embedded`.
+export function stubOllama(replies = [], { sameMeaning = [] } = {}) {
   const queue = [...replies];
   const calls = [];
+  const embedded = [];
   const word = () => Array.from({ length: 7 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join('');
   globalThis.fetch = async (url, options) => {
     const body = JSON.parse(options.body);
     if (String(url).endsWith('/api/embed')) {
-      const n = Array.isArray(body.input) ? body.input.length : 1;
-      return Response.json({ embeddings: Array.from({ length: n }, () => Array(1024).fill(0.01)) });
+      const texts = Array.isArray(body.input) ? body.input : [body.input];
+      embedded.push(...texts);
+      return Response.json({ embeddings: texts.map(text => fakeEmbedding(text, sameMeaning)) });
     }
     calls.push(body);
     if (body.format) return Response.json({ message: { content: '{"facts":[]}' }, done_reason: 'stop' });
@@ -43,6 +56,7 @@ export function stubOllama(replies = []) {
   };
   return {
     calls,
+    embedded,
     queue: (...more) => queue.push(...more),
   };
 }

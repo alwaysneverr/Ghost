@@ -4,9 +4,10 @@
  */
 
 import { character } from './character.js';
+import { OLLAMA_KEEP_ALIVE, OLLAMA_URL } from './ollama.js';
 import { isHarmfulReply } from './safety.js';
+import { dropSimilarSentences } from './similarity.js';
 
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3:8b';
 
 // Qwen3 "thinks" before answering unless told not to — slow, and pointless
@@ -17,13 +18,6 @@ const OLLAMA_THINK = process.env.OLLAMA_THINK === 'true';
 // RAG_TOP_K or MAX_HISTORY. Ollama's default is small enough that it would
 // silently drop content. 16384 uses about 7.5 GB of VRAM on qwen3:8b.
 const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX || 16384);
-
-// How long Ollama keeps a model loaded after a request. Its own default is 5 minutes,
-// and loading it again made the first reply after a quiet spell take about 9 seconds
-// instead of 2-3. A duration like "30m", seconds as a number, "-1" to keep it until
-// Ollama stops, or "0" to unload it straight away. Shared with rag.js, for embeddings.
-const keepAlive = process.env.OLLAMA_KEEP_ALIVE || '1h';
-export const OLLAMA_KEEP_ALIVE = /^-?\d+$/.test(keepAlive) ? Number(keepAlive) : keepAlive;
 
 // Hard limit on reply length, roughly 65 words. Prompt rules alone didn't stop
 // the model writing essays when asked. Thinking uses up the same budget, so the
@@ -223,7 +217,9 @@ export async function chatFresh(
     );
     if (isHarmfulReply(raw)) continue;
 
-    const kept = gentle ? raw : dropHabits(raw, earlierReplies, theirWords, factual || scripted);
+    const mustAnswer = factual || scripted;
+    let kept = gentle ? raw : dropHabits(raw, earlierReplies, theirWords, mustAnswer);
+    if (kept && !gentle) kept = await dropSimilarSentences(kept, earlierReplies, { keepFirst: mustAnswer });
     const reply = kept || raw;
     const score = kept
       ? staleness(reply, earlierReplies, promptWords)

@@ -5,13 +5,13 @@
  */
 
 import { character } from './character.js';
-import { OLLAMA_KEEP_ALIVE } from './llm.js';
+import { cosineSimilarity, EMBED_MODEL, embedBatch } from './ollama.js';
 import { needsGentleReply } from './safety.js';
 import { rerank } from './rerank.js';
 import { readSceneIndex, SCENE_INDEX_PATH } from './sceneIndex.js';
 
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || 'bge-m3';
+// scripts/parse-and-index.js embeds through here, so indexing and search match.
+export { embedBatch };
 
 // A fact card has to score this well to count as relevant. Measured with bge-m3:
 // 36 of 39 lore questions reach it, and 1 of 27 bits of small talk does.
@@ -57,29 +57,6 @@ function loadIndex() {
   index = stored.scenes;
   console.log(`📚 Loaded ${index.length} script chunks for RAG.`);
   return index;
-}
-
-function cosineSimilarity(a, b) {
-  let dot = 0, normA = 0, normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-// One vector per text, in the same order. Also used by scripts/parse-and-index.js
-// so indexing and querying always embed the same way.
-export async function embedBatch(texts) {
-  const res = await fetch(`${OLLAMA_URL}/api/embed`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: EMBED_MODEL, input: texts, keep_alive: OLLAMA_KEEP_ALIVE }),
-  });
-  if (!res.ok) throw new Error(`Embedding request failed: HTTP ${res.status}`);
-  const data = await res.json();
-  return data.embeddings;
 }
 
 async function embed(text) {

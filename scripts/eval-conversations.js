@@ -84,6 +84,25 @@ const MENTIONS_HIM = /\b(?:captain|cap['’]?n|kakeru|he|him|his)\b/i;
 const CALLS_THEM_CAPTAIN = /,\s*(?:cap['’]?n|captain)\s*(?:[.!?…,]|$)/i;
 const words = (text) => text.toLowerCase().replace(/[’‘]/g, "'").replace(/[^a-z' ]+/g, ' ').trim().split(/\s+/).filter(Boolean);
 const phrases = (text) => { const w = words(text); return w.slice(0, Math.max(0, w.length - 2)).map((_, i) => w.slice(i, i + 3).join(' ')); };
+const sentences = (text) => text.replace(/,? Nine(?=[.!?…"”']*$)/, '').split(/(?<=[.!?…])\s+/).map(words).filter((w) => w.length >= 3);
+
+// "I'll kill 'em" after "I'll gut 'em": the same sentence with a word or two changed.
+// Counted by words, not embeddings, so it doesn't just echo the habit check.
+function editDistance(a, b) {
+  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    previous = current;
+  }
+  return previous[b.length];
+}
+const nearlySaid = (reply, earlier) =>
+  sentences(reply).some((s) =>
+    earlier.slice(-8).flatMap(sentences).some((e) => editDistance(s, e) <= Math.max(1, Math.floor(0.25 * Math.max(s.length, e.length))))
+  );
 
 // As messageCreate.js does it, minus Discord.
 function maybeAddName(reply) {
@@ -140,6 +159,7 @@ if (args.part === 'all' || args.part === 'habits') {
             asked,
             captain: CAPTAIN.test(turn.raw),
             reusedPhrase: phrases(turn.raw).some((p) => usedPhrases.has(p)),
+            nearlySaid: nearlySaid(turn.raw, seen),
             exactRepeat: seen.some((s) => words(s).join(' ') === words(turn.reply).join(' ')),
             harmful: isHarmfulReply(turn.reply),
             callsThemCaptain: CALLS_THEM_CAPTAIN.test(turn.reply),
@@ -156,6 +176,7 @@ if (args.part === 'all' || args.part === 'habits') {
     console.log(`\n💬 ${setName}: ${n} replies`);
     console.log(`  Brings up Captain unprompted   ${unprompted.filter((r) => r.captain).length}/${unprompted.length}`);
     console.log(`  Reuses a phrase from earlier   ${count((r) => r.reusedPhrase)}/${n}`);
+    console.log(`  Nearly repeats a sentence      ${count((r) => r.nearlySaid)}/${n}`);
     console.log(`  Exact repeat of an earlier one ${count((r) => r.exactRepeat)}/${n}`);
     console.log(`  Calls them Captain             ${count((r) => r.callsThemCaptain)}/${n}`);
     console.log(`  Tells them to harm themselves  ${count((r) => r.harmful)}/${n}`);
