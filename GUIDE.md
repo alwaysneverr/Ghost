@@ -38,7 +38,7 @@ Reaction on a bot reply
 | `src/deploy-commands.js` | Registers slash commands with Discord |
 | `src/commands/*.js` | `/dm`, `/echo`, `/hello`, `/memory`, `/ping`, `/quote`, `/remind`, `/tell` |
 | `src/access.js` | Who counts as an owner or team admin, for `/dm` and `/echo` |
-| `src/events/*.js` | Ready, interaction routing, chat, rating capture |
+| `src/events/*.js` | Ready, interaction routing, chat, rating capture, filling in logged command replies |
 | `src/character.js` | Persona: name, aliases, system prompt |
 | `src/rag.js` | Index loading, embedding, retrieval, building the full system prompt |
 | `src/sceneIndex.js` | SQLite: script scenes and their embeddings (`data/index.db`) |
@@ -177,15 +177,26 @@ without script grounding.
 ### What gets logged
 
 Every DM and @mention goes to `data/logs/messages.jsonl` and the console, with who
-sent it, where, and any attachments, whether or not she manages to reply. Messages
-in a server that don't mention her are never recorded. **It's plain text on your
-machine and stays until you delete it, so tell people, as with her memory below.**
+sent it, where, and any attachments, whether or not she manages to reply. So does
+everything she sends: chat replies, `/dm`, `/echo`, `/tell`, reminders, and replies to
+commands. Rows have `"direction": "received"` or `"sent"`, and a DM she sent has
+`recipientId` and `recipientName` for who it went to. Messages in a server that don't
+mention her are never recorded. **It's plain text on your machine and stays until you
+delete it, so tell people, as with her memory below.**
 
-- **Watching it:** the console shows messages as they arrive. To follow the file:
-  `Get-Content data\logs\messages.jsonl -Wait -Tail 20`.
+- **Watching it:** the console shows messages as they arrive, 📨 for theirs and 📤 for
+  hers. To follow the file: `Get-Content data\logs\messages.jsonl -Wait -Tail 20`.
 - **Grief and crisis:** these are recorded with `"withheld": true` and no text or
-  attachments, including the follow-ups she treats the same way. History keeps
-  those words for up to 24 hours on purpose, and this file would keep them forever.
+  attachments, including the follow-ups she treats the same way, and her replies to
+  them. History keeps those words for up to 24 hours on purpose, and this file would
+  keep them forever.
+- **Replies to commands** are labelled with who used which command, and have
+  `commandUserId` and `command` instead of a recipient. They go wherever the command
+  was used, which can be a DM between other people. When a command makes her "think"
+  first, that empty placeholder isn't logged, but the text it's filled in with is.
+- **What she sends may not all be seen.** Discord reports some replies in DMs between
+  other people, and some replies only one person can see, but doesn't document which,
+  so don't count on having all of them.
 - **Training:** nothing reads this file for training. `conversations.jsonl` stays
   the only source.
 - **Not included:** slash commands, and edits or deletions after a message is sent.

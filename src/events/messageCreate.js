@@ -2,7 +2,7 @@ import { Events } from 'discord.js';
 import { character } from '../character.js';
 import { buildSystemPrompt } from '../rag.js';
 import { chatFresh, recentStart } from '../llm.js';
-import { logExchange, logMessage } from '../logger.js';
+import { logExchange, logMessage, logSent } from '../logger.js';
 import { isCrisis, inCrisis, needsGentleReply } from '../safety.js';
 import { getChannel, getFacts, saveChannel } from '../store.js';
 import { MEMORY_ENABLED, rememberFrom } from '../memory.js';
@@ -83,7 +83,13 @@ export default {
   async execute(message) {
     const client = message.client;
 
-    if (message.author.bot || message.webhookId || message.author.id === client.user.id) return;
+    // Her own messages go to the same log as theirs.
+    if (message.author.id === client.user.id) {
+      logSent(message);
+      return;
+    }
+
+    if (message.author.bot || message.webhookId) return;
 
     const isDM = message.channel.isDMBased?.() ?? false;
     const isMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
