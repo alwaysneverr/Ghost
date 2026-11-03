@@ -5,11 +5,15 @@ import {
   MessageFlags,
   RESTJSONErrorCodes,
 } from 'discord.js';
+import { isBotAdmin } from '../access.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('dm')
-    .setDescription('Send a DM to a user.')
+    .setDescription('Send a DM to a user. Owner and team admins only.')
+    // Hides it from non-admins in servers. Discord ignores this in DMs and for user
+    // installs, so the check in execute() is what actually enforces it.
+    .setDefaultMemberPermissions(0)
     .setContexts([
       InteractionContextType.Guild,
       InteractionContextType.BotDM,
@@ -28,6 +32,12 @@ export default {
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    if (!(await isBotAdmin(interaction.client, interaction.user.id))) {
+      console.warn(`🚫 ${interaction.user.username} (${interaction.user.id}) tried to use /dm.`);
+      await interaction.editReply(`Nice try, Captain. That one's not for you.`);
+      return;
+    }
 
     const target = interaction.options.getUser('user');
     const message = interaction.options.getString('message');
