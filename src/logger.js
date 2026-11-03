@@ -1,13 +1,15 @@
 /**
  * Logs conversation exchanges and 👍/👎 ratings to a JSONL file for later
  * curation into fine-tuning data (see scripts/export-training-data.js), and
- * everything sent to her and by her to a separate one, for keeping an eye on the bot.
+ * everything people send her to a separate one, for keeping an eye on the bot.
  */
 
 import { appendFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { MessageFlags } from 'discord.js';
+import { needsGentleReply } from './safety.js';
+import { getChannel } from './store.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOG_DIR = join(__dirname, '..', 'data', 'logs');
@@ -35,10 +37,14 @@ export function logExchange({ messageId, channelId, userId, userMessage, botRepl
   }) + '\n');
 }
 
-// One row in messages.jsonl and one line in the console.
-function writeMessage(message, content, { direction, icon, label, extra = {} }) {
+// One row in messages.jsonl and one line in the console. withheld records that
+// someone's worst day happened but not their words: history only keeps those for 24
+// hours on purpose (store.js), and this file keeps everything until it's deleted.
+function writeMessage(message, content, withheld, { direction, icon, label, extra = {} }) {
   ensureLogDir();
-  const attachments = [...message.attachments.values()].map(({ name, url }) => ({ name, url }));
+  const attachments = withheld
+    ? []
+    : [...message.attachments.values()].map(({ name, url }) => ({ name, url }));
   appendFileSync(MESSAGE_LOG_PATH, JSON.stringify({
     type: 'message',
     direction,
@@ -50,11 +56,14 @@ function writeMessage(message, content, { direction, icon, label, extra = {} }) 
     guildName: message.guild?.name ?? null,
     channelId: message.channel.id,
     ...extra,
-    content,
+    content: withheld ? null : content,
     attachments,
+    withheld,
   }) + '\n');
 
-  const shown = `${content.slice(0, MAX_CONSOLE_TEXT) || '(no text)'}${attachments.length > 0 ? ` [+${attachments.length} attachment(s)]` : ''}`;
+  const shown = withheld
+    ? '(withheld: grief or crisis)'
+    : `${content.slice(0, MAX_CONSOLE_TEXT) || '(no text)'}${attachments.length > 0 ? ` [+${attachments.length} attachment(s)]` : ''}`;
   const where = message.guild?.name ?? message.guildId ?? 'DM';
   // People control this text, so it stays on one line with no control characters.
   console.log(`${icon} [${where}] ${label}: ${shown}`.replace(/[\s\p{Cc}]+/gu, ' '));
@@ -63,9 +72,9 @@ function writeMessage(message, content, { direction, icon, label, extra = {} }) 
 // One message sent to her, whether or not she goes on to answer it. Apart from
 // conversations.jsonl, because that one becomes training data.
 // A failure here warns and carries on, since a full disk shouldn't stop her replying.
-export function logMessage(message, content) {
+export function logMessage(message, content, withheld) {
   try {
-    writeMessage(message, content, {
+    writeMessage(message, content, withheld, {
       direction: 'received',
       icon: '📨',
       label: `${message.author.username} (${message.author.id})`,
@@ -87,7 +96,8 @@ export function isAwaitingText(messageId) {
 }
 
 // One message she sent: a chat reply, /dm, /echo, /tell, a reminder, anything. Discord
-// tells the bot about its own messages, so they're all caught in one place.
+// tells the bot about its own messages, so they're all caught in one place. Withheld,
+// like theirs, when someone in that channel is grieving or in crisis.
 // In a DM she sent herself, recipientId is who it went to. A reply to a command has
 // commandUserId instead: it went wherever the command was used, which can be a DM
 // between other people, and labelling that "to" whoever else is in it read as though
@@ -100,6 +110,7 @@ export function logSent(message) {
       return;
     }
 
+    const theirs = getChannel(message.channel.id).history.filter(m => m.role === 'user').map(m => m.content);
     const command = message.interactionMetadata;
     const recipientId = !command && message.channel.isDMBased?.() ? message.channel.recipientId : null;
     const to = recipientId && recipientId !== message.author.id ? recipientId : null;
@@ -111,7 +122,7 @@ export function logSent(message) {
         ? `to ${toName ?? 'someone'} (${to})`
         : `in ${message.channel.id}`;
 
-    writeMessage(message, message.content, {
+    writeMessage(message, message.content, needsGentleReply(theirs), {
       direction: 'sent',
       icon: '📤',
       label,

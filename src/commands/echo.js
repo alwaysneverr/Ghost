@@ -37,7 +37,7 @@ export default {
     const { client, user, channelId } = interaction;
     if (!(await isBotAdmin(client, user.id))) {
       console.warn(`🚫 ${user.username} (${user.id}) tried to use /echo.`);
-      await interaction.editReply(`Nice try, Captain. That one's not for you.`);
+      await interaction.editReply(`Nice try, Nine. That one's not for you.`);
       return;
     }
 

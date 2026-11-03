@@ -5,7 +5,19 @@
  * Used by both parse-and-index.js (RAG) and export-script-training-data.js
  * (fine-tuning data) so the two stay consistent.
  */
+import { readdirSync } from 'fs';
 import { character } from '../../src/character.js';
+
+// Script files to read, skipping dotfiles and anything matched by
+// character.excludeScripts.
+export function listScriptFiles(dir) {
+  const files = readdirSync(dir).filter(f => !f.startsWith('.'));
+  const kept = files.filter(f => !character.excludeScripts?.test(f));
+  if (kept.length < files.length) {
+    console.log(`🚫 Excluding ${files.length - kept.length} file(s) matching ${character.excludeScripts}`);
+  }
+  return kept;
+}
 
 export function parseScriptFile(text) {
   const rows = [];
@@ -16,17 +28,11 @@ export function parseScriptFile(text) {
     const cells = line.split('|').slice(1, -1).map(c => c.trim());
     if (cells.length < 8) continue;
 
-    const [lineNo, jpActor, jpOverride, jpDialogue, enCharacter, enDialogue, cnCharacter, cnDialogue] = cells;
+    const [lineNo, , , , enCharacter, enDialogue] = cells;
 
-    if (lineNo === 'Line' || /^-+$/.test(lineNo)) continue; // header/separator row
-    if (!/^\d+$/.test(lineNo)) continue;
+    if (!/^\d+$/.test(lineNo)) continue; // header/separator row
 
-    rows.push({
-      line: Number(lineNo),
-      jpActor, jpOverride, jpDialogue,
-      enCharacter, enDialogue,
-      cnCharacter, cnDialogue,
-    });
+    rows.push({ line: Number(lineNo), enCharacter, enDialogue });
   }
   return rows;
 }
@@ -42,20 +48,31 @@ export function isTargetRow(row, aliases) {
   return aliases.includes((row.enCharacter || '').toLowerCase());
 }
 
-// ── Render rows into readable "Speaker: line" text in ONE language ─────────
-export function renderRows(rows, lang) {
+// ── Render rows into readable "Speaker: line" text (EN columns) ────────────
+export function renderRows(rows) {
   const lines = rows
     .map(r => {
-      let speaker, text;
-      if (lang === 'en') { speaker = r.enCharacter; text = r.enDialogue; }
-      else if (lang === 'ja') { speaker = r.jpActor; text = r.jpDialogue; }
-      else if (lang === 'zh') { speaker = r.cnCharacter; text = r.cnDialogue; }
-      else return null;
-
-      if (!text) return null;
-      return speaker ? `${speaker}: ${text}` : `(narration): ${text}`;
+      if (!r.enDialogue) return null;
+      return r.enCharacter ? `${r.enCharacter}: ${r.enDialogue}` : `(narration): ${r.enDialogue}`;
     })
     .filter(Boolean);
+
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+function stripQuotes(text) {
+  const t = text.trim();
+  for (const [open, close] of [['"', '"'], ['“', '”']]) {
+    if (t.length >= 2 && t.startsWith(open) && t.endsWith(close)) return t.slice(1, -1).trim();
+  }
+  return t;
+}
+
+// ── Render the target's own lines as a plain chat reply ────────────────────
+// No speaker name and no quote brackets, so fine-tuning teaches the model to
+// answer the way the bot should on Discord — not 'Ghost: "..."'.
+export function renderReply(rows) {
+  const lines = rows.map(r => (r.enDialogue ? stripQuotes(r.enDialogue) : null)).filter(Boolean);
 
   return lines.length > 0 ? lines.join('\n') : null;
 }

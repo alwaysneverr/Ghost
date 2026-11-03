@@ -7,7 +7,7 @@ export default {
 
   execute(client) {
     console.log(
-      `\nAlright, I'm here. Oi, whaddaya mean who am I? It's ${client.user.username}! Quit joking around. Whaddaya need, Captain?`
+      `\nAlright, I'm here. Oi, whaddaya mean who am I? It's ${client.user.username}! Quit joking around. Whaddaya need, Nine?`
     );
     console.log(
       `📡 Yeah, yeah, I'm serving only ${client.guilds.cache.size} person in this world. You, Nine.\n`

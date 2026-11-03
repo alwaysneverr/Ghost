@@ -35,11 +35,11 @@ export default {
 
     if (!(await isBotAdmin(interaction.client, interaction.user.id))) {
       console.warn(`🚫 ${interaction.user.username} (${interaction.user.id}) tried to use /dm.`);
-      await interaction.editReply(`Nice try, Captain. That one's not for you.`);
+      await interaction.editReply(`Nice try, Nine. That one's not for you.`);
       return;
     }
 
-    const target = interaction.options.getUser('user');
+    const target =interaction.options.getUser('user');
     const message = interaction.options.getString('message');
 
     try {
@@ -56,21 +56,21 @@ function getDMFailureReason(error, target) {
   // Discord API error codes
   switch (error?.code) {
     case RESTJSONErrorCodes.CannotSendMessagesToThisUser:
-      return `Captain, ${target.username} has DMs disabled! I can't send shit to them. Or... they're not accepting messages from non-friends. Wow, you don't have many friends, don'tcha?`;
+      return `Nine, ${target.username} has DMs disabled! I can't send shit to them. Or... they're not accepting messages from non-friends. Wow, you don't have many friends, don'tcha?`;
     case RESTJSONErrorCodes.UnknownUser:
-      return `Captain, I might be called Ghost before, but that doesn't mean I can reach people that doesn't exist.`;
+      return `Nine, I might be called Ghost before, but that doesn't mean I can reach people that doesn't exist.`;
     case RESTJSONErrorCodes.UnknownChannel:
-      return `I know you're powerful and all, Captain, but that still means jackshit if the target doesn't have a DM channel.`;
+      return `I know you're powerful and all, Nine, but that still means jackshit if the target doesn't have a DM channel.`;
     case RESTJSONErrorCodes.MissingPermissions:
-      return 'Captain, you forgot to give me the right permissions. Dumbass.';
+      return 'Nine, you forgot to give me the right permissions. Dumbass.';
     case RESTJSONErrorCodes.RequestEntityTooLarge:
       return `Stop yapping so much! I literally can't even remember what you said! Those images are also too pristine, I can't send them over!`;
     case RESTJSONErrorCodes.InvalidFormBody:
-      return `Captain, you sure you want me to send a blank image to them? Really?`;
+      return `Nine, you sure you want me to send a blank image to them? Really?`;
     default:
       // Network or unknown errors
       if (error?.status === 429)
-        return `Sorry, Captain, I got too much stuff to handle. Try again in a few seconds.`;
+        return `Sorry, Nine, I got too much stuff to handle. Try again in a few seconds.`;
       if (error?.status >= 500)
         return `The multiverse itself is erroring out. Not much I can do when that's the case. Maybe we should ask Sophitia for help?`;
       return `Whoa! I keep seeing this number over and over. What's this all about? (code: ${error?.code ?? error?.status ?? 'unknown'}).`;

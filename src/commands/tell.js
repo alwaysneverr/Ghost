@@ -4,31 +4,24 @@ import {
   ApplicationIntegrationType,
   MessageFlags,
 } from 'discord.js';
-
-// She won't be the one to tell someone to harm themselves, whoever wrote it.
-const HARMFUL = [
-  /\b(?:kill(?:ing|in['’]?)?|hurt(?:ing|in['’]?)?|off|end|hang|cut|drown|shoot)\s+(?:your|ya|ur|yo)\s?self\b/i,
-  /\bkys\b/i,
-  /\b(?:you\s+should|go|just)\s+die\b/i,
-  /\bbetter\s+off\s+dead\b/i,
-];
+import { isHarmfulReply } from '../safety.js';
 
 // Her own words around theirs, so it's always clear who said what. {message} goes on a
 // line of its own as a quote.
 const toSomeone = [
-  `Oi {target}, Captain {sender} wants me to tell you this:\n> {message}\nDon't shoot the messenger.`,
-  `{target}. Message from Captain {sender}, and no, I didn't write it:\n> {message}`,
-  `Ugh. {target}, Captain {sender} made me your mailman:\n> {message}\nI'm not waiting around for a reply.`,
-  `Listen up, {target}. Captain {sender} says:\n> {message}\nTake it up with them, not me.`,
+  `Oi {target}, Nine {sender} wants me to tell you this:\n> {message}\nDon't shoot the messenger.`,
+  `{target}. Message from Nine {sender}, and no, I didn't write it:\n> {message}`,
+  `Ugh. {target}, Nine {sender} made me your mailman:\n> {message}\nI'm not waiting around for a reply.`,
+  `Listen up, {target}. Nine {sender} says:\n> {message}\nTake it up with them, not me.`,
 ];
 
 const toEveryone = [
-  `Captain {sender} wants everyone to hear this:\n> {message}\nDon't look at me, I just work here.`,
-  `Announcement from Captain {sender}, apparently:\n> {message}`,
-  `Shut up for a sec. Captain {sender} has somethin' to say:\n> {message}`,
+  `Nine {sender} wants everyone to hear this:\n> {message}\nDon't look at me, I just work here.`,
+  `Announcement from Nine {sender}, apparently:\n> {message}`,
+  `Shut up for a sec. Nine {sender} has somethin' to say:\n> {message}`,
 ];
 
-const toThemselves = `You want me to tell you what you just said, Captain {sender}? Fine:\n> {message}\nHappy now?`;
+const toThemselves = `You want me to tell you what you just said, Nine {sender}? Fine:\n> {message}\nHappy now?`;
 
 const pick = (lines) => lines[Math.floor(Math.random() * lines.length)];
 
@@ -67,9 +60,9 @@ export default {
     const target = interaction.options.getUser('user');
     const message = interaction.options.getString('message');
 
-    if (HARMFUL.some((pattern) => pattern.test(message))) {
+    if (isHarmfulReply(message)) {
       await interaction.reply({
-        content: `Not passin' that along, Captain.`,
+        content: `Not passin' that along, Nine.`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -77,7 +70,7 @@ export default {
 
     if (target?.id === interaction.client.user.id) {
       await interaction.reply({
-        content: `I heard you the first time, Captain. You don't gotta send it through me.`,
+        content: `I heard you the first time, Nine. You don't gotta send it through me.`,
         flags: MessageFlags.Ephemeral,
       });
       return;

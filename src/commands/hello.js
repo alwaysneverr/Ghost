@@ -51,17 +51,17 @@ export default {
     const isBot = target.id === botUser.id;
 
     const randomGreetings = [
-      `Oi, Captain ${interaction.user} told me to say hello to you, ${target}. I don't know why he can't say it himself though. Whatevs.`,
-      `Hey ${target}, Captain ${interaction.user} sent me to look for you. Consider yourself greeted. Now leave me alone.`,
-      `Ugh, Captain ${interaction.user} is being lazy again and forced me to say hi to you, ${target}. Don't get any ideas, alright?`,
-      `Look, ${target}, I'm just here because Captain ${interaction.user} told me to. Hi. There, mission accomplished.`,
+      `Oi, Nine ${interaction.user} told me to say hello to you, ${target}. I don't know why they can't say it themselves though. Whatevs.`,
+      `Hey ${target}, Nine ${interaction.user} sent me to look for you. Consider yourself greeted. Now leave me alone.`,
+      `Ugh, Nine ${interaction.user} is being lazy again and forced me to say hi to you, ${target}. Don't get any ideas, alright?`,
+      `Look, ${target}, I'm just here because Nine ${interaction.user} told me to. Hi. There, mission accomplished.`,
     ];
 
     const randomIndex = Math.floor(Math.random() * randomGreetings.length);
     const chosenGreeting = randomGreetings[randomIndex];
 
     const greeting = isSelf
-      ? `Yo, Captain ${interaction.user}!`
+      ? `Yo, Nine ${interaction.user}!`
       : isBot
         ? `Tch, stop making me talk to myself.`
         : chosenGreeting;

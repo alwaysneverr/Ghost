@@ -2,6 +2,8 @@
 
 A Discord Bot and nothing else. Based on a character from the visual novel 9-nine-.
 
+See [GUIDE.md](GUIDE.md) for setup, forking, and training the chatbot.
+
 ## Running it
 
 Needs Node 22.13 or newer, for its built-in SQLite. `npm start` runs the bot. After changing
@@ -14,6 +16,7 @@ any command, run `npm run deploy` so Discord knows about it.
 | `/ping`, `/hello`, `/quote` | Anyone | The usual |
 | `/remind <minutes> <reason>` | Anyone | Reminds you later, in the same channel, or by DM if she can't post there |
 | `/tell <message> [user]` | Anyone | She passes your message on to someone, or to everyone there. Works in group DMs. |
+| `/memory show`, `/memory forget` | Anyone | See or wipe what she remembers about you |
 | `/dm <user> <message>` | Owner and team admins | She DMs someone |
 | `/echo <message>` | Owner and team admins | She says something in the current channel |
 
@@ -27,8 +30,9 @@ any command, run `npm run deploy` so Discord knows about it.
 - **Pings:** `/tell` only pings the person it's for, and `/echo` pings nobody, even if the text
   says `@everyone`. `/tell` won't pass on a message telling someone to harm themselves.
 - **Group DMs:** bots can't join them, so she's only there through people who have installed her to
-  their own account, and only commands work. `/tell`, `/ping`, `/hello`, `/quote` and `/dm` work.
-  `/echo` doesn't, because it posts to the channel. `/remind` is set there but arrives by DM.
+  their own account, and only commands work. `/tell`, `/ping`, `/hello`, `/quote`, `/memory` and
+  `/dm` work. `/echo` doesn't, because it posts to the channel. `/remind` is set there but arrives
+  by DM.
 
 ## What gets logged
 
@@ -36,9 +40,9 @@ Every DM and @mention she gets, and everything she sends, goes to `data/logs/mes
 the console: 📨 for theirs, 📤 for hers. Rows say who sent it, where, and who a DM went to.
 Messages in a server that don't mention her are never recorded.
 
-**It's plain text on your machine and stays until you delete it, so tell people.** It records
-everything in full, including messages from someone who's having a hard time. To follow it:
-`Get-Content data\logs\messages.jsonl -Wait -Tail 20`.
+**It's plain text on your machine and stays until you delete it, so tell people.** Messages from
+someone grieving or in crisis, and her replies to them, are recorded without their words. To follow
+it: `Get-Content data\logs\messages.jsonl -Wait -Tail 20`. GUIDE.md has the details.
 
 Replies in group DMs, and replies only one person can see, may not all show up, because Discord
 doesn't report all of them to the bot.

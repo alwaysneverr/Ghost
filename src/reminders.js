@@ -17,7 +17,7 @@ const GIVE_UP_AFTER_MS = 24 * 60 * 60 * 1000;
 function reminderText({ userId, reason, minutes, dueAt }, now = Date.now()) {
   const user = `<@${userId}>`;
   const rants = [
-    `Oi, Captain ${user}! Get your lazy ass up and do this already: **${reason}**. I had to stare at the clock for ${minutes} minutes just for this!`,
+    `Oi, Nine ${user}! Get your lazy ass up and do this already: **${reason}**. I had to stare at the clock for ${minutes} minutes just for this!`,
     `Hey ${user}! Wake up! You forced me to remind you about: **${reason}**. Don't make me scream next time.`,
     `Mission accomplished. Here is your stupid reminder, ${user}: **${reason}**. Now stop bothering me for a while.`,
   ];

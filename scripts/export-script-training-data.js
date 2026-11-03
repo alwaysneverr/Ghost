@@ -7,35 +7,51 @@
  *
  * For every line the target character speaks, the preceding conversation
  * turn becomes the "user" message and her line(s) become the "assistant"
- * response. Each example is generated once per language (EN/JA/ZH) using
- * that language's parallel text, so the model learns a consistent voice in
- * whichever language the conversation is actually happening in.
+ * response. Only the English columns are used.
+ *
+ * Some whole script files go to data/holdout.jsonl instead, so models can be tested
+ * on her lines they never trained on (scripts/eval-holdout.js).
  *
  * Usage: node scripts/export-script-training-data.js
  */
 
 import 'dotenv/config';
-import { readdirSync, readFileSync, writeFileSync, existsSync } from 'fs';
+import { createHash } from 'crypto';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
   parseScriptFile,
+  listScriptFiles,
   targetAliases,
   isTargetRow as isAliasRow,
   renderRows,
+  renderReply,
 } from './lib/script-parser.js';
 import { character } from '../src/character.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = join(__dirname, '..', 'data', 'scripts');
 const OUTPUT_PATH = join(__dirname, '..', 'data', 'script-training-data.jsonl');
+const HOLDOUT_PATH = join(__dirname, '..', 'data', 'holdout.jsonl');
 
 const TARGET_ALIASES = targetAliases();
+
+// Whole files, not random examples: neighbouring examples share context, and one
+// example's reply is part of the next one's context, so a random split would test
+// models on text they trained on.
+const HOLDOUT_SHARE = 0.15;
 
 // How many prior turns to include as conversation history before each of
 // her lines — kept modest so examples resemble the short back-and-forth
 // the bot actually has at runtime.
 const MAX_CONTEXT_TURNS = 4;
+
+// Narration-heavy turns can run to thousands of characters. Training cuts
+// anything past its length limit (2,048 tokens) off the END, which would lose
+// the reply being learned from, so context is trimmed here instead. Roughly
+// 1,250 tokens, leaving room for the system prompt and her reply.
+const MAX_CONTEXT_CHARS = 5000;
 
 function isTargetRow(row) {
   return isAliasRow(row, TARGET_ALIASES);
@@ -61,8 +77,38 @@ function groupIntoTurns(rows) {
   return turns;
 }
 
+// ── Keep the most recent context that fits in MAX_CONTEXT_CHARS ─────────
+// Drops whole turns from the oldest end, then the oldest lines of the turn
+// that didn't fit. The conversation must open with a user turn, so a leading
+// assistant turn goes too. Returns [] if nothing usable is left.
+function capContext(history) {
+  const capped = [];
+  let remaining = MAX_CONTEXT_CHARS;
+
+  for (let i = history.length - 1; i >= 0; i--) {
+    const { role, content } = history[i];
+    if (content.length <= remaining) {
+      capped.unshift(history[i]);
+      remaining -= content.length;
+      continue;
+    }
+
+    const kept = [];
+    for (const line of content.split('\n').reverse()) {
+      if (line.length > remaining) break;
+      kept.unshift(line);
+      remaining -= line.length;
+    }
+    if (kept.length > 0) capped.unshift({ role, content: kept.join('\n') });
+    break;
+  }
+
+  while (capped[0]?.role === 'assistant') capped.shift();
+  return capped;
+}
+
 // ── Build training examples from one file's turns ───────────────────────
-function buildExamples(turns, file) {
+function buildExamples(turns) {
   const examples = [];
 
   for (let i = 0; i < turns.length; i++) {
@@ -72,35 +118,57 @@ function buildExamples(turns, file) {
 
     const contextTurns = turns.slice(Math.max(0, i - MAX_CONTEXT_TURNS), i);
 
-    for (const lang of ['en', 'ja', 'zh']) {
-      const history = [];
-      let ok = true;
+    const responseText = renderReply(turn.rows);
+    // Skip replies that are only "..." — nothing worth learning there.
+    if (!responseText || !/\p{L}/u.test(responseText)) continue;
 
-      for (const ctxTurn of contextTurns) {
-        const text = renderRows(ctxTurn.rows, lang);
-        if (!text) { ok = false; break; }
-        history.push({
-          role: isTargetRow(ctxTurn.rows[0]) ? 'assistant' : 'user',
-          content: text,
-        });
-      }
-      if (!ok || history.length === 0 || history[0].role !== 'user') continue;
-
-      const responseText = renderRows(turn.rows, lang);
-      if (!responseText) continue;
-
-      examples.push({
-        messages: [
-          { role: 'system', content: character.systemPrompt },
-          ...history,
-          { role: 'assistant', content: responseText },
-        ],
-        _meta: { file, line: turn.rows[0].line, lang },
-      });
+    const history = [];
+    for (const ctxTurn of contextTurns) {
+      // Her turns are written as plain replies (no "Ghost:" prefix or
+      // quote brackets) — exactly how the bot should answer on Discord.
+      const isHers = isTargetRow(ctxTurn.rows[0]);
+      const text = isHers ? renderReply(ctxTurn.rows) : renderRows(ctxTurn.rows);
+      if (text) history.push({ role: isHers ? 'assistant' : 'user', content: text });
     }
+
+    const capped = capContext(history);
+    if (capped.length === 0) continue;
+
+    examples.push({
+      line: turn.rows[0].line,
+      messages: [
+        { role: 'system', content: character.trainingPrompt },
+        ...capped,
+        { role: 'assistant', content: responseText },
+      ],
+    });
   }
 
   return examples;
+}
+
+// Which files to hold out. Picked by hash of the name, so it's the same files every
+// run, and adding a script doesn't reshuffle the rest.
+function pickHoldoutFiles(examples) {
+  const counts = new Map();
+  for (const { file } of examples) counts.set(file, (counts.get(file) ?? 0) + 1);
+
+  const hash = file => createHash('sha256').update(file).digest('hex');
+  const target = Math.round(examples.length * HOLDOUT_SHARE);
+  const held = new Set();
+  let total = 0;
+  for (const file of [...counts.keys()].sort((a, b) => hash(a).localeCompare(hash(b)))) {
+    if (total + counts.get(file) > target) continue;
+    held.add(file);
+    total += counts.get(file);
+  }
+  return held;
+}
+
+// Her line, ignoring case and punctuation. "Yeah." turns up all over the script, and
+// a test line she trained on elsewhere isn't a fair test.
+function replyKey(example) {
+  return example.messages.at(-1).content.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
 function main() {
@@ -109,7 +177,7 @@ function main() {
     process.exit(1);
   }
 
-  const files = readdirSync(SCRIPTS_DIR).filter(f => !f.startsWith('.'));
+  const files = listScriptFiles(SCRIPTS_DIR);
   if (files.length === 0) {
     console.error(`❌ No script files found in ${SCRIPTS_DIR}`);
     process.exit(1);
@@ -120,20 +188,28 @@ function main() {
     const text = readFileSync(join(SCRIPTS_DIR, file), 'utf-8');
     const rows = parseScriptFile(text);
     const turns = groupIntoTurns(rows);
-    const examples = buildExamples(turns, file);
-    all.push(...examples);
-    console.log(`  ${file}: ${rows.length} lines → ${examples.length} training example(s)`);
+    const examples = buildExamples(turns);
+    all.push(...examples.map(example => ({ ...example, file })));
+    console.log(`  ${file}: ${rows.length} lines → ${examples.length} example(s)`);
   }
 
-  // Strip internal metadata — the training format only needs "messages"
-  const clean = all.map(({ _meta, ...rest }) => rest);
-  writeFileSync(OUTPUT_PATH, clean.map(r => JSON.stringify(r)).join('\n'));
+  const heldFiles = pickHoldoutFiles(all);
+  const train = all.filter(example => !heldFiles.has(example.file));
+  const seenInTraining = new Set(train.map(replyKey));
+  const heldOut = all.filter(example => heldFiles.has(example.file));
+  const holdout = heldOut.filter(example => !seenInTraining.has(replyKey(example)));
 
-  const byLang = { en: 0, ja: 0, zh: 0 };
-  for (const ex of all) byLang[ex._meta.lang]++;
+  writeFileSync(OUTPUT_PATH, train.map(({ messages }) => JSON.stringify({ messages })).join('\n'));
+  writeFileSync(
+    HOLDOUT_PATH,
+    holdout
+      .map(({ file, line, messages }) => JSON.stringify({ source: `${file}:${line}`, messages }))
+      .join('\n')
+  );
 
-  console.log(`\n✅ Wrote ${clean.length} training example(s) to ${OUTPUT_PATH}`);
-  console.log(`   (English: ${byLang.en}, Japanese: ${byLang.ja}, Chinese: ${byLang.zh})`);
+  console.log(`\n✅ Wrote ${train.length} training example(s) to ${OUTPUT_PATH}`);
+  console.log(`✅ Wrote ${holdout.length} held-out example(s) from ${heldFiles.size} file(s) to ${HOLDOUT_PATH}`);
+  console.log(`   Set aside and not used at all, because she says the same line in training: ${heldOut.length - holdout.length}`);
 }
 
 main();

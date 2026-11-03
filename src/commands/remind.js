@@ -48,12 +48,12 @@ export default {
       minutes: duration,
     });
     if (!created) {
-      await interaction.editReply(`You've already got a pile of these waiting, Captain. Do some of them first.`);
+      await interaction.editReply(`You've already got a pile of these waiting, Nine. Do some of them first.`);
       return;
     }
 
     const registerMumbles = [
-      `Fine, I'll keep track of time for ${duration} minutes. Don't make me regret this, Captain.`,
+      `Fine, I'll keep track of time for ${duration} minutes. Don't make me regret this, Nine.`,
       `Ugh, so I am a stopwatch now? Fine, I'll remind you about "${reason}" in ${duration} minutes. Go do something else.`,
       `Timer set for ${duration} minutes. If you forget it anyway after I remind you, it's not my fault.`,
     ];
