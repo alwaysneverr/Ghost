@@ -1,7 +1,7 @@
 import { Events } from 'discord.js';
 import { character } from '../character.js';
 import { retrieveRelevant, detectLang, chunkText } from '../rag.js';
-import { logExchange } from '../logger.js';
+import { logExchange, logMessage, logSent } from '../logger.js';
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3:8b';
@@ -37,7 +37,13 @@ export default {
   async execute(message) {
     const client = message.client;
 
-    if (message.author.bot || message.webhookId || message.author.id === client.user.id) return;
+    // Her own messages go to the same log as theirs.
+    if (message.author.id === client.user.id) {
+      logSent(message);
+      return;
+    }
+
+    if (message.author.bot || message.webhookId) return;
 
     const isDM = message.channel.isDMBased?.() ?? false;
     const isMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
@@ -48,6 +54,10 @@ export default {
     const content = message.content
       .replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '')
       .trim();
+
+    // Only what's sent to her: the bot can see every message in a server it's in, and
+    // those are none of its business.
+    logMessage(message, content);
 
     // Bare/empty ping — no actual message, just a quick in-character rant
     if (isMentioned && !content) {
