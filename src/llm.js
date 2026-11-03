@@ -18,6 +18,13 @@ const OLLAMA_THINK = process.env.OLLAMA_THINK === 'true';
 // silently drop content. 16384 uses about 7.5 GB of VRAM on qwen3:8b.
 const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX || 16384);
 
+// How long Ollama keeps a model loaded after a request. Its own default is 5 minutes,
+// and loading it again made the first reply after a quiet spell take about 9 seconds
+// instead of 2-3. A duration like "30m", seconds as a number, "-1" to keep it until
+// Ollama stops, or "0" to unload it straight away. Shared with rag.js, for embeddings.
+const keepAlive = process.env.OLLAMA_KEEP_ALIVE || '1h';
+export const OLLAMA_KEEP_ALIVE = /^-?\d+$/.test(keepAlive) ? Number(keepAlive) : keepAlive;
+
 // Hard limit on reply length, roughly 65 words. Prompt rules alone didn't stop
 // the model writing essays when asked. Thinking uses up the same budget, so the
 // limit only applies with thinking off.
@@ -243,6 +250,7 @@ export async function chatJson(messages, schema, model = OLLAMA_MODEL) {
       stream: false,
       think: false,
       format: schema,
+      keep_alive: OLLAMA_KEEP_ALIVE,
       options: { temperature: 0, num_ctx: OLLAMA_NUM_CTX, num_predict: JSON_MAX_TOKENS },
     }),
   });
@@ -253,6 +261,24 @@ export async function chatJson(messages, schema, model = OLLAMA_MODEL) {
 
   const data = await response.json();
   return JSON.parse(data.message?.content ?? '{}');
+}
+
+// Loads the chat model now, so the first person to talk to her doesn't wait for it.
+// Same context size as chat(), since a different one makes Ollama load it all over
+// again. An empty conversation only loads the model.
+export async function warmUp() {
+  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      messages: [],
+      keep_alive: OLLAMA_KEEP_ALIVE,
+      options: { num_ctx: OLLAMA_NUM_CTX },
+    }),
+  });
+  if (!response.ok) throw new Error(`Ollama returned HTTP ${response.status}`);
+  await response.json();
 }
 
 // messages: [{ role: 'system' | 'user' | 'assistant', content }]
@@ -266,6 +292,7 @@ async function chat(messages, model, temperature, repeatPenalty, onToken) {
       messages,
       stream: Boolean(onToken),
       think: OLLAMA_THINK,
+      keep_alive: OLLAMA_KEEP_ALIVE,
       options: {
         ...SAMPLING,
         temperature,

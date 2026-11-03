@@ -5,6 +5,7 @@
  */
 
 import { character } from './character.js';
+import { OLLAMA_KEEP_ALIVE } from './llm.js';
 import { needsGentleReply } from './safety.js';
 import { rerank } from './rerank.js';
 import { readSceneIndex, SCENE_INDEX_PATH } from './sceneIndex.js';
@@ -74,7 +75,7 @@ export async function embedBatch(texts) {
   const res = await fetch(`${OLLAMA_URL}/api/embed`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: EMBED_MODEL, input: texts }),
+    body: JSON.stringify({ model: EMBED_MODEL, input: texts, keep_alive: OLLAMA_KEEP_ALIVE }),
   });
   if (!res.ok) throw new Error(`Embedding request failed: HTTP ${res.status}`);
   const data = await res.json();
@@ -83,6 +84,12 @@ export async function embedBatch(texts) {
 
 async function embed(text) {
   return (await embedBatch([text]))[0];
+}
+
+// Loads the embedding model, and the scene index with it, before the first message.
+export async function warmUpRetrieval() {
+  loadIndex();
+  await embedBatch(['warm up']);
 }
 
 function tokenize(text) {

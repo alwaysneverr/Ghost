@@ -1,5 +1,19 @@
 import { Events, ActivityType } from 'discord.js';
 import { restoreReminders } from '../reminders.js';
+import { warmUp } from '../llm.js';
+import { warmUpRetrieval } from '../rag.js';
+
+// Loads the models while nobody's waiting. Also the first sign that Ollama isn't
+// running, before anyone finds out by messaging her.
+async function loadModels() {
+  const started = Date.now();
+  try {
+    await Promise.all([warmUp(), warmUpRetrieval()]);
+    console.log(`🔥 Models loaded in ${((Date.now() - started) / 1000).toFixed(1)}s.`);
+  } catch (error) {
+    console.warn(`⚠️  Couldn't load the models (${error.message}). Is Ollama running? She'll try again on the first message.`);
+  }
+}
 
 export default {
   name: Events.ClientReady,
@@ -22,5 +36,6 @@ export default {
       },
     });
     restoreReminders(client);
+    loadModels();
   },
 };
