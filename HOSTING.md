@@ -363,10 +363,11 @@ cd /opt/ghost
 git clone https://github.com/alwaysneverr/Ghost.git
 cd Ghost
 git checkout main
-npm install --omit=dev --omit=optional
+npm ci --omit=dev --omit=optional
 ```
 
-What those options do:
+`npm ci` installs exactly the library versions in `package-lock.json`, the ones the bot was
+tested with. `npm install` could pick newer ones. What the options do:
 
 - `--omit=dev` skips the lint tools.
 - `--omit=optional` skips Transformers.js, a large download that only `RAG_RERANK=true` uses.
@@ -530,7 +531,7 @@ that the models show as loaded.
 sudo -u ghost -H -s
 cd /opt/ghost/Ghost
 git pull
-npm install --omit=dev --omit=optional
+npm ci --omit=dev --omit=optional
 npm run deploy                    # only if a command was added or changed
 exit
 sudo systemctl restart ghost
