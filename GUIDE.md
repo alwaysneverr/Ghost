@@ -287,6 +287,11 @@ seconds and needs neither Ollama nor Discord. It checks:
 Every test runs on a temporary database and log folder with the network cut off,
 so it never touches `data/`, Discord or Ollama.
 
+Run **`npm run lint`** too. It catches mistakes such as unused or undefined variables,
+and checks the layout against Prettier (`.prettierrc`). Layout complaints fix
+themselves with `npx eslint . --fix`. The Prettier extension's format on save in VS
+Code keeps them from building up in the first place.
+
 The evals need Ollama and take minutes, so use them when you change the prompt, the
 model or how replies are picked. Every reply is saved to `data/evals/` for reading:
 
@@ -1599,5 +1604,3 @@ Ideas that fit the current architecture, roughly in order of payoff.
 - The bot is English-only: messages in other languages get English replies.
 - Replies stop at about 65 words, so she can't deliver a long rant even when
   it would suit the moment. Raise `OLLAMA_MAX_REPLY_TOKENS` to allow it.
-- About 74 Prettier formatting errors remain in the existing code. They're
-  formatting only — run `npx eslint . --fix` to apply them.
