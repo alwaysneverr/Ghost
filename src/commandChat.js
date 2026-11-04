@@ -20,7 +20,9 @@ const QUOTE_LENGTH = 200;
 // private DMs mustn't turn up in front of them.
 export function memoryScope(interaction) {
   if (interaction.guildId) return interaction.guildId;
-  return interaction.context === InteractionContextType.PrivateChannel ? `group:${interaction.channelId}` : 'dm';
+  return interaction.context === InteractionContextType.PrivateChannel
+    ? `group:${interaction.channelId}`
+    : 'dm';
 }
 
 // Nobody else can see what was asked, only her answer, so it's quoted above the reply.
@@ -34,7 +36,10 @@ function quote(content, author = null) {
 // remember is whether facts may be kept from it, so never from someone else's message.
 // Grief and crisis get a reply only the person using the command sees, with nothing
 // quoted, so their worst day isn't put in front of a group chat.
-export async function answerInCommand(interaction, { content, speakerId, speakerName, author = null, remember, via }) {
+export async function answerInCommand(
+  interaction,
+  { content, speakerId, speakerName, author = null, remember, via }
+) {
   const channelId = interaction.channelId;
   const sensitive = isSensitive(channelId, content);
   await interaction.deferReply(sensitive ? { flags: MessageFlags.Ephemeral } : {});
@@ -55,7 +60,13 @@ export async function answerInCommand(interaction, { content, speakerId, speaker
 
   const scope = memoryScope(interaction);
   try {
-    const { reply, rateable } = await converse({ channelId, speakerId, speakerName, content, scope });
+    const { reply, rateable } = await converse({
+      channelId,
+      speakerId,
+      speakerName,
+      content,
+      scope,
+    });
     const sent = await interaction.editReply({
       content: (sensitive ? reply : `${quote(content, author)}\n${reply}`).slice(0, 2000),
       components: rateable ? [ratingButtons()] : [],
@@ -64,10 +75,18 @@ export async function answerInCommand(interaction, { content, speakerId, speaker
     });
     if (!rateable) return;
 
-    logExchange({ messageId: sent.id, channelId, userId: speakerId, userMessage: content, botReply: reply });
+    logExchange({
+      messageId: sent.id,
+      channelId,
+      userId: speakerId,
+      userMessage: content,
+      botReply: reply,
+    });
     if (remember) rememberFrom(speakerId, scope, content);
   } catch (error) {
     console.error(`❌ Chat error in ${via}:`, error);
-    await interaction.editReply(`❌ ${character.name} isn't responding — check that Ollama is running and reachable on the workstation.`);
+    await interaction.editReply(
+      `❌ ${character.name} isn't responding — check that Ollama is running and reachable on the workstation.`
+    );
   }
 }

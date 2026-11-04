@@ -17,7 +17,8 @@ export { embedBatch };
 // 36 of 39 lore questions reach it, and 1 of 27 bits of small talk does.
 const FACT_MIN_SCORE = 0.5;
 const MAX_FACTS = 3;
-const QUESTION = /\?\s*$|^(?:who|what|what's|whats|where|when|why|how|which|does|do|did|is|are|can|could|will|would|should|tell me)\b/i;
+const QUESTION =
+  /\?\s*$|^(?:who|what|what's|whats|where|when|why|how|which|does|do|did|is|are|can|could|will|would|should|tell me)\b/i;
 const FOLLOW_UP = /\b(?:she|her|hers|he|him|his|they|them|their|that|it|this|those|these)\b/i;
 // A message this short rarely says what it's about on its own.
 const SHORT_MESSAGE_WORDS = 4;
@@ -49,7 +50,9 @@ function loadIndex() {
 
   // Comparing vectors from two different models gives confident nonsense.
   if (stored.model !== EMBED_MODEL) {
-    console.warn(`⚠️  The RAG index was built with "${stored.model}", not "${EMBED_MODEL}". Run "npm run index" again. Continuing without script scenes.`);
+    console.warn(
+      `⚠️  The RAG index was built with "${stored.model}", not "${EMBED_MODEL}". Run "npm run index" again. Continuing without script scenes.`
+    );
     index = [];
     return index;
   }
@@ -76,13 +79,18 @@ export async function warmUpRetrieval() {
 }
 
 function tokenize(text) {
-  return text.toLowerCase().replace(/[’‘]/g, "'").match(/[a-z0-9']+/g) ?? [];
+  return (
+    text
+      .toLowerCase()
+      .replace(/[’‘]/g, "'")
+      .match(/[a-z0-9']+/g) ?? []
+  );
 }
 
 // Word statistics for BM25, built once from the scenes she's allowed to see.
 function buildKeywordIndex(chunks) {
   const documentFrequency = new Map();
-  const documents = chunks.map(chunk => {
+  const documents = chunks.map((chunk) => {
     const tokens = tokenize(chunk.text);
     const termCounts = new Map();
     for (const token of tokens) termCounts.set(token, (termCounts.get(token) ?? 0) + 1);
@@ -125,7 +133,7 @@ function fuseRankings(byEmbedding, byKeyword) {
 
 // Scenes naming late-reveal characters are never candidates.
 function allowedChunks() {
-  allowed ??= loadIndex().filter(chunk => !character.spoilerNames.test(chunk.text));
+  allowed ??= loadIndex().filter((chunk) => !character.spoilerNames.test(chunk.text));
   return allowed;
 }
 
@@ -137,7 +145,7 @@ export async function retrieveRelevant(query, topK) {
   const queryEmbedding = await embed(query);
 
   let ranked = chunks
-    .map(chunk => ({
+    .map((chunk) => ({
       ...chunk,
       score: cosineSimilarity(queryEmbedding, chunk.embedding),
     }))
@@ -147,21 +155,24 @@ export async function retrieveRelevant(query, topK) {
     keywordIndex ??= buildKeywordIndex(chunks);
     const queryTerms = [...new Set(tokenize(query))];
     const byKeyword = keywordIndex.documents
-      .map(document => ({ document, score: keywordScore(document, queryTerms, keywordIndex) }))
+      .map((document) => ({ document, score: keywordScore(document, queryTerms, keywordIndex) }))
       .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score)
       .map(({ document }) => document.chunk);
-    const byPosition = new Map(ranked.map(chunk => [`${chunk.file}:${chunk.lineStart}`, chunk]));
+    const byPosition = new Map(ranked.map((chunk) => [`${chunk.file}:${chunk.lineStart}`, chunk]));
     ranked = fuseRankings(
       ranked,
-      byKeyword.map(chunk => byPosition.get(`${chunk.file}:${chunk.lineStart}`))
+      byKeyword.map((chunk) => byPosition.get(`${chunk.file}:${chunk.lineStart}`))
     );
   }
 
   if (RAG_RERANK) {
     const candidates = ranked.slice(0, RERANK_CANDIDATES);
     try {
-      const scores = await rerank(query, candidates.map(chunk => chunk.text));
+      const scores = await rerank(
+        query,
+        candidates.map((chunk) => chunk.text)
+      );
       return candidates
         .map((chunk, i) => ({ ...chunk, score: scores[i] }))
         .sort((a, b) => b.score - a.score)
@@ -177,7 +188,7 @@ export async function retrieveRelevant(query, topK) {
 // Embedded once, the first time they're needed. Not cached if it fails, so the
 // next message tries again.
 function loadFactEmbeddings() {
-  factEmbeddings ??= embedBatch(character.facts.map(fact => fact.text)).catch(error => {
+  factEmbeddings ??= embedBatch(character.facts.map((fact) => fact.text)).catch((error) => {
     factEmbeddings = null;
     throw error;
   });
@@ -185,7 +196,7 @@ function loadFactEmbeddings() {
 }
 
 function namedFacts(text) {
-  return character.facts.filter(fact => fact.match.test(text));
+  return character.facts.filter((fact) => fact.match.test(text));
 }
 
 // The fact cards for a message: those it names, then those it's closest to.
@@ -257,7 +268,7 @@ export async function buildSystemPrompt(
     return { prompt: character.griefPrompt, factual: false, scripted: false };
   }
 
-  const situation = character.situations.find(s => s.match.test(content));
+  const situation = character.situations.find((s) => s.match.test(content));
   const hint = situation ? `\n${situation.hint}` : '';
 
   let referenceBlock = '';
@@ -266,7 +277,7 @@ export async function buildSystemPrompt(
     const facts = await retrieveFacts(content, userMessages);
     if (facts.length > 0) {
       factBlock = `\n\nWhat you know about this:\n${facts
-        .map(fact => `- ${fact.text}`)
+        .map((fact) => `- ${fact.text}`)
         .join('\n')}`;
     }
 
@@ -276,7 +287,7 @@ export async function buildSystemPrompt(
         : await retrieveRelevant(sceneQuery(content, userMessages), topK);
     if (relevant.length > 0) {
       referenceBlock = `\n\nPast scenes that may be relevant:\n\n${relevant
-        .map(r => `--- ${r.file} (lines ${r.lineStart}-${r.lineEnd}) ---\n${r.text}`)
+        .map((r) => `--- ${r.file} (lines ${r.lineStart}-${r.lineEnd}) ---\n${r.text}`)
         .join('\n\n')}`;
     }
   } catch (ragError) {
@@ -285,13 +296,13 @@ export async function buildSystemPrompt(
   const rememberedBlock =
     remembered.length > 0
       ? `\n\nWhat this person has told you about themselves before. Bring it up only if it's relevant:\n${remembered
-          .map(fact => `- ${fact}`)
+          .map((fact) => `- ${fact}`)
           .join('\n')}`
       : '';
   const earlierBlock =
     earlier.length > 0
       ? `\n\nWhat they've told you earlier in this conversation. Bring it up only if it's relevant:\n${earlier
-          .map(line => `- ${line}`)
+          .map((line) => `- ${line}`)
           .join('\n')}`
       : '';
 
@@ -299,8 +310,10 @@ export async function buildSystemPrompt(
   // "your cat" when the cat was Ana's. It has to say whose "my" this is.
   const groupBlock = group
     ? `\n\nSeveral different people are talking to you here. You call all of them Nine, and only Kakeru is Captain. Who's said what:\n${group.recent
-        .map(line => `- ${line.speaker} said: ${line.content}`)
-        .join('\n')}\nYou're answering ${group.speaker} now. When ${group.speaker} says "I" or "my", that means ${group.speaker} and nobody else.`
+        .map((line) => `- ${line.speaker} said: ${line.content}`)
+        .join(
+          '\n'
+        )}\nYou're answering ${group.speaker} now. When ${group.speaker} says "I" or "my", that means ${group.speaker} and nobody else.`
     : '';
   const speaker = group?.speaker ?? 'Nine';
 

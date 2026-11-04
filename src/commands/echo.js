@@ -23,11 +23,7 @@ export default {
       ApplicationIntegrationType.UserInstall,
     ])
     .addStringOption((option) =>
-      option
-        .setName('message')
-        .setDescription('What she says')
-        .setRequired(true)
-        .setMaxLength(2000)
+      option.setName('message').setDescription('What she says').setRequired(true).setMaxLength(2000)
     ),
 
   async execute(interaction) {
@@ -49,12 +45,16 @@ export default {
       await channel.send({ content: message, allowedMentions: { parse: [] } });
     } catch (error) {
       console.warn(`⚠️  /echo failed in ${channelId}: ${error.message}`);
-      await interaction.editReply(`❌ I can't post here. I'm not in this channel, or I'm not allowed to talk in it.`);
+      await interaction.editReply(
+        `❌ I can't post here. I'm not in this channel, or I'm not allowed to talk in it.`
+      );
       return;
     }
 
     // The channel can't tell who made her say it, so this is the only record.
-    console.log(`📣 ${user.username} (${user.id}) echoed in ${channelId}: ${message.slice(0, 200)}`);
+    console.log(
+      `📣 ${user.username} (${user.id}) echoed in ${channelId}: ${message.slice(0, 200)}`
+    );
     await interaction.editReply('✅ Said it.');
   },
 };

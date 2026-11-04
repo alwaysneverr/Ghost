@@ -23,15 +23,30 @@ const team = new Team(client, {
   name: 't',
   icon: null,
   owner_user_id: '100',
-  members: [member('100', 'admin', 2), member('101', 'admin', 2), member('102', 'admin', 1), member('103', 'developer', 2), member('104', 'read_only', 2)],
+  members: [
+    member('100', 'admin', 2),
+    member('101', 'admin', 2),
+    member('102', 'admin', 1),
+    member('103', 'developer', 2),
+    member('104', 'read_only', 2),
+  ],
 });
 const solo = new User(client, { id: '200', username: 'solo', discriminator: '0', avatar: null });
 
 function fakeApp(owner, { lookupFails = false } = {}) {
-  return { fetch: async () => { if (lookupFails) throw new Error('down'); return { owner }; } };
+  return {
+    fetch: async () => {
+      if (lookupFails) throw new Error('down');
+      return { owner };
+    },
+  };
 }
 
-async function useEcho(owner, userId, { text = 'hello', channelFails = false, sendFails = false, lookupFails = false } = {}) {
+async function useEcho(
+  owner,
+  userId,
+  { text = 'hello', channelFails = false, sendFails = false, lookupFails = false } = {}
+) {
   const sent = [];
   const replies = [];
   let deferred = null;
@@ -41,18 +56,30 @@ async function useEcho(owner, userId, { text = 'hello', channelFails = false, se
       channels: {
         fetch: async (id) => {
           if (channelFails) throw new Error('Missing Access');
-          return { id, send: async (m) => { if (sendFails) throw new Error('Missing Permissions'); sent.push(m); } };
+          return {
+            id,
+            send: async (m) => {
+              if (sendFails) throw new Error('Missing Permissions');
+              sent.push(m);
+            },
+          };
         },
       },
     },
     user: { id: userId, username: `u${userId}` },
     channelId: '555',
-    deferReply: async (o) => { deferred = o; },
+    deferReply: async (o) => {
+      deferred = o;
+    },
     editReply: async (r) => replies.push(r),
     options: { getString: () => text },
   };
   let threw = false;
-  const { lines } = await quietly(() => echo.execute(interaction).catch(() => { threw = true; }));
+  const { lines } = await quietly(() =>
+    echo.execute(interaction).catch(() => {
+      threw = true;
+    })
+  );
   return { sent, replies, deferred, lines, threw };
 }
 
@@ -64,7 +91,15 @@ async function useDm(owner, userId) {
       user: { id: userId, username: 'x' },
       deferReply: async () => {},
       editReply: async () => {},
-      options: { getUser: () => ({ username: 't', send: async () => { sent = true; } }), getString: () => 'hi' },
+      options: {
+        getUser: () => ({
+          username: 't',
+          send: async () => {
+            sent = true;
+          },
+        }),
+        getString: () => 'hi',
+      },
     })
   );
   return sent;
@@ -77,7 +112,10 @@ test('/echo: the owner and accepted admins can use it, nobody else', async () =>
     const r = await useEcho(team, id);
     assert.equal(r.sent.length, 0, id);
     assert.match(r.replies[0], /Nice try/);
-    assert.ok(r.lines.some((l) => l.includes('tried')), 'the attempt shows in the console');
+    assert.ok(
+      r.lines.some((l) => l.includes('tried')),
+      'the attempt shows in the console'
+    );
   }
   assert.equal((await useEcho(solo, '200')).sent.length, 1);
   assert.equal((await useEcho(solo, '201')).sent.length, 0);
@@ -162,8 +200,14 @@ test('/tell: refuses to pass on self-harm, privately, and logs nothing', async (
 });
 
 test('/tell: their text stays as typed, pings nobody else, and always fits', async () => {
-  assert.deepEqual((await useTell('@everyone <@&5> <@30> look', ben)).reply.allowedMentions, { users: ['20'] });
-  assert.ok((await useTell('costs $& and $1 and {sender}', ben)).reply.content.includes('> costs $& and $1 and {sender}'));
+  assert.deepEqual((await useTell('@everyone <@&5> <@30> look', ben)).reply.allowedMentions, {
+    users: ['20'],
+  });
+  assert.ok(
+    (await useTell('costs $& and $1 and {sender}', ben)).reply.content.includes(
+      '> costs $& and $1 and {sender}'
+    )
+  );
   assert.ok((await useTell('x'.repeat(1500), ben)).reply.content.length <= 2000);
   const data = tell.data.toJSON();
   assert.deepEqual(data.contexts, [0, 1, 2]);
@@ -185,9 +229,27 @@ function remindersInteraction(userId, subcommand, { id = null, focused = '' } = 
 
 test('/reminders list: only theirs, soonest first, privately, pinging nobody', async () => {
   const now = Date.now();
-  const later = addReminder({ userId: 'r1', channelId: 'c', reason: 'later one', minutes: 120, dueAt: now + 7200000 });
-  const sooner = addReminder({ userId: 'r1', channelId: 'c', reason: 'sooner @everyone', minutes: 5, dueAt: now + 300000 });
-  addReminder({ userId: 'r2', channelId: 'c', reason: 'not yours', minutes: 5, dueAt: now + 300000 });
+  const later = addReminder({
+    userId: 'r1',
+    channelId: 'c',
+    reason: 'later one',
+    minutes: 120,
+    dueAt: now + 7200000,
+  });
+  const sooner = addReminder({
+    userId: 'r1',
+    channelId: 'c',
+    reason: 'sooner @everyone',
+    minutes: 5,
+    dueAt: now + 300000,
+  });
+  addReminder({
+    userId: 'r2',
+    channelId: 'c',
+    reason: 'not yours',
+    minutes: 5,
+    dueAt: now + 300000,
+  });
 
   const i = remindersInteraction('r1', 'list');
   await reminders.execute(i);
@@ -204,8 +266,20 @@ test('/reminders list: only theirs, soonest first, privately, pinging nobody', a
 });
 
 test('/reminders cancel: only their own, and it is gone', async () => {
-  const mine = addReminder({ userId: 'c1', channelId: 'c', reason: 'cancel me', minutes: 5, dueAt: Date.now() + 300000 });
-  const theirs = addReminder({ userId: 'c2', channelId: 'c', reason: 'keep me', minutes: 5, dueAt: Date.now() + 300000 });
+  const mine = addReminder({
+    userId: 'c1',
+    channelId: 'c',
+    reason: 'cancel me',
+    minutes: 5,
+    dueAt: Date.now() + 300000,
+  });
+  const theirs = addReminder({
+    userId: 'c2',
+    channelId: 'c',
+    reason: 'keep me',
+    minutes: 5,
+    dueAt: Date.now() + 300000,
+  });
 
   const wrong = remindersInteraction('c1', 'cancel', { id: theirs.id });
   await reminders.execute(wrong);
@@ -219,9 +293,27 @@ test('/reminders cancel: only their own, and it is gone', async () => {
 });
 
 test('/reminders cancel suggests only their own, filtered by what they type', async () => {
-  addReminder({ userId: 'a1', channelId: 'c', reason: 'buy milk', minutes: 60, dueAt: Date.now() + 3600000 });
-  addReminder({ userId: 'a1', channelId: 'c', reason: 'call mom', minutes: 1440, dueAt: Date.now() + 86400000 });
-  addReminder({ userId: 'a2', channelId: 'c', reason: 'buy eggs', minutes: 60, dueAt: Date.now() + 3600000 });
+  addReminder({
+    userId: 'a1',
+    channelId: 'c',
+    reason: 'buy milk',
+    minutes: 60,
+    dueAt: Date.now() + 3600000,
+  });
+  addReminder({
+    userId: 'a1',
+    channelId: 'c',
+    reason: 'call mom',
+    minutes: 1440,
+    dueAt: Date.now() + 86400000,
+  });
+  addReminder({
+    userId: 'a2',
+    channelId: 'c',
+    reason: 'buy eggs',
+    minutes: 60,
+    dueAt: Date.now() + 3600000,
+  });
 
   const all = remindersInteraction('a1', 'cancel');
   await reminders.autocomplete(all);
@@ -230,7 +322,10 @@ test('/reminders cancel suggests only their own, filtered by what they type', as
 
   const typed = remindersInteraction('a1', 'cancel', { focused: 'milk' });
   await reminders.autocomplete(typed);
-  assert.deepEqual(typed.replies[0].map((c) => c.name.replace(/^#\d+: /, '')), ['buy milk (1 hour)']);
+  assert.deepEqual(
+    typed.replies[0].map((c) => c.name.replace(/^#\d+: /, '')),
+    ['buy milk (1 hour)']
+  );
 });
 
 test('/remind: a month at most, and nothing is stored past that', async () => {
@@ -247,6 +342,12 @@ test('/remind: a month at most, and nothing is stored past that', async () => {
   assert.match(edits[0], /A month, tops/);
   assert.equal(getReminders().length, before);
   const options = remind.data.toJSON().options;
-  assert.deepEqual(options.map((o) => o.name), ['duration', 'reason', 'unit']);
-  assert.deepEqual(options[2].choices.map((c) => c.value), ['minutes', 'hours', 'days']);
+  assert.deepEqual(
+    options.map((o) => o.name),
+    ['duration', 'reason', 'unit']
+  );
+  assert.deepEqual(
+    options[2].choices.map((c) => c.value),
+    ['minutes', 'hours', 'days']
+  );
 });

@@ -19,15 +19,16 @@ let loading = null;
 // message tries again.
 function loadModel() {
   loading ??= (async () => {
-    const { AutoTokenizer, AutoModelForSequenceClassification, env } = await import(
-      '@huggingface/transformers'
-    );
+    const { AutoTokenizer, AutoModelForSequenceClassification, env } =
+      await import('@huggingface/transformers');
     env.cacheDir = CACHE_DIR;
     return {
       tokenizer: await AutoTokenizer.from_pretrained(RERANK_MODEL),
-      model: await AutoModelForSequenceClassification.from_pretrained(RERANK_MODEL, { dtype: 'q8' }),
+      model: await AutoModelForSequenceClassification.from_pretrained(RERANK_MODEL, {
+        dtype: 'q8',
+      }),
     };
-  })().catch(error => {
+  })().catch((error) => {
     loading = null;
     throw error;
   });

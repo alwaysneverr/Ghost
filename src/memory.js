@@ -35,7 +35,9 @@ const ABOUT_SOMEONE_ELSE =
   /^(?:my\s+)?(?:friends?|sisters?|brothers?|mom|mum|mother|dad|father|parents?|boss|girlfriend|boyfriend|wife|husband|partner|son|daughter|kids?|teacher|coworkers?|roommates?|neighbou?rs?)\b/i;
 
 const STOP_WORDS = new Set(
-  'a an and are at be been for from has have he her his i in is it its like likes loves of on or she that the their they to was with'.split(' ')
+  'a an and are at be been for from has have he her his i in is it its like likes loves of on or she that the their they to was with'.split(
+    ' '
+  )
 );
 
 const EXTRACT_PROMPT = `You pull lasting personal facts out of one chat message, for a friend to remember later.
@@ -58,23 +60,28 @@ const FACTS_SCHEMA = {
 };
 
 function contentWords(text) {
-  return (text.toLowerCase().replace(/[’‘]/g, "'").match(/[a-z0-9']+/g) ?? [])
-    .filter(word => !STOP_WORDS.has(word))
-    .map(word => word.slice(0, 4)); // close enough for cat/cats, play/playing
+  return (
+    text
+      .toLowerCase()
+      .replace(/[’‘]/g, "'")
+      .match(/[a-z0-9']+/g) ?? []
+  )
+    .filter((word) => !STOP_WORDS.has(word))
+    .map((word) => word.slice(0, 4)); // close enough for cat/cats, play/playing
 }
 
 function isGrounded(fact, message) {
   const words = contentWords(fact);
   const source = new Set(contentWords(message));
   if (words.length === 0) return false;
-  return words.filter(word => source.has(word)).length / words.length >= MIN_GROUNDING;
+  return words.filter((word) => source.has(word)).length / words.length >= MIN_GROUNDING;
 }
 
 function isDuplicate(fact, known) {
   const words = new Set(contentWords(fact));
-  return known.some(other => {
+  return known.some((other) => {
     const otherWords = new Set(contentWords(other));
-    const shared = [...words].filter(word => otherWords.has(word)).length;
+    const shared = [...words].filter((word) => otherWords.has(word)).length;
     return shared / (words.size + otherWords.size - shared) >= DUPLICATE_OVERLAP;
   });
 }
@@ -118,5 +125,5 @@ export function rememberFrom(userId, scope, message) {
       const facts = await extractFacts(message, getFacts(userId, scope));
       for (const fact of facts) addFact(userId, scope, fact);
     })
-    .catch(error => console.warn('⚠️  Could not update memory:', error.message));
+    .catch((error) => console.warn('⚠️  Could not update memory:', error.message));
 }

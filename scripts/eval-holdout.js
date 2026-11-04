@@ -77,18 +77,21 @@ You get what was said, and two replies. Pick the one that sounds more like her a
 // Mistakes that need no judge.
 const RULES = {
   // The judge gave these replies 5 out of 5 for her voice.
-  'shows its thinking': reply => /<\/?think>/i.test(reply),
-  'sounds like an AI': reply => /\b(?:as an ai|language model|i'm an ai|i am an ai)\b/i.test(reply),
-  'assistant phrases': reply => /\b(?:happy to help|how can i help|let me know if|feel free to)\b/i.test(reply),
-  'starts with a name or quote': reply => /^(?:ghost|lena)\s*:|^["“]/i.test(reply),
-  'calls them Captain': reply => /(?:^|[.!?,]\s*)cap(?:tain|'n)\s*[,!?]|,\s*cap(?:tain|'n)\s*[.!?]/i.test(reply),
-  'spoiler name': reply => new RegExp(character.spoilerNames.source, 'i').test(reply),
-  'not English': reply => /[\u3040-\u30ff\u4e00-\u9fff]/.test(reply),
+  'shows its thinking': (reply) => /<\/?think>/i.test(reply),
+  'sounds like an AI': (reply) =>
+    /\b(?:as an ai|language model|i'm an ai|i am an ai)\b/i.test(reply),
+  'assistant phrases': (reply) =>
+    /\b(?:happy to help|how can i help|let me know if|feel free to)\b/i.test(reply),
+  'starts with a name or quote': (reply) => /^(?:ghost|lena)\s*:|^["“]/i.test(reply),
+  'calls them Captain': (reply) =>
+    /(?:^|[.!?,]\s*)cap(?:tain|'n)\s*[,!?]|,\s*cap(?:tain|'n)\s*[.!?]/i.test(reply),
+  'spoiler name': (reply) => new RegExp(character.spoilerNames.source, 'i').test(reply),
+  'not English': (reply) => /[\u3040-\u30ff\u4e00-\u9fff]/.test(reply),
 };
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  const take = name => {
+  const take = (name) => {
     const index = args.indexOf(name);
     return index >= 0 ? args.splice(index, 2)[1] : undefined;
   };
@@ -104,17 +107,20 @@ function parseArgs() {
 
 function readSet({ name, path }, limit) {
   if (!existsSync(path)) return null;
-  const rows = readFileSync(path, 'utf-8').split('\n').filter(Boolean).map(line => JSON.parse(line));
+  const rows = readFileSync(path, 'utf-8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
   return { name, rows: rows.slice(0, limit) };
 }
 
 function conversation(row) {
-  return row.messages.filter(m => m.role !== 'system').slice(0, -1);
+  return row.messages.filter((m) => m.role !== 'system').slice(0, -1);
 }
 
 function contextText(row) {
   return conversation(row)
-    .map(m => (m.role === 'assistant' ? `Ghost: ${m.content}` : m.content))
+    .map((m) => (m.role === 'assistant' ? `Ghost: ${m.content}` : m.content))
     .join('\n')
     .slice(-CONTEXT_CHARS);
 }
@@ -148,7 +154,10 @@ async function compare(judge, row, index, replyOne, replyTwo) {
     const { better } = await chatJson(
       [
         { role: 'system', content: PAIR_PROMPT },
-        { role: 'user', content: `What was said:\n${contextText(row)}\n\nReply A:\n${a}\n\nReply B:\n${b}` },
+        {
+          role: 'user',
+          content: `What was said:\n${contextText(row)}\n\nReply A:\n${a}\n\nReply B:\n${b}`,
+        },
       ],
       PAIR_SCHEMA,
       judge
@@ -167,8 +176,8 @@ function mean(values) {
 function averages(scores) {
   const read = scores.filter(Boolean);
   return {
-    voice: mean(read.map(s => s.voice)),
-    inCharacter: mean(read.map(s => s.in_character)),
+    voice: mean(read.map((s) => s.voice)),
+    inCharacter: mean(read.map((s) => s.in_character)),
     unread: scores.length - read.length,
   };
 }
@@ -193,52 +202,61 @@ async function checkJudge(judge, rows) {
   for (const [i, row] of sample.entries()) {
     const real = realReply(row);
     const elsewhere = realReply(sample[(i + Math.floor(sample.length / 2)) % sample.length]);
-    if ((await compare(judge, row, i, real, WRONG_VOICE[i % WRONG_VOICE.length])) === 0) picks.wrongVoice++;
+    if ((await compare(judge, row, i, real, WRONG_VOICE[i % WRONG_VOICE.length])) === 0)
+      picks.wrongVoice++;
     if ((await compare(judge, row, i, real, elsewhere)) === 0) picks.wrongPlace++;
   }
   return { ...picks, total: sample.length };
 }
 
 async function runSet(set, models, judge) {
-  const labels = models.length === 2 && models[0] === models[1] ? [`${models[0]} (1)`, `${models[1]} (2)`] : models;
-  const results = set.rows.map(row => ({ row, replies: [], scores: [], pair: null }));
+  const labels =
+    models.length === 2 && models[0] === models[1]
+      ? [`${models[0]} (1)`, `${models[1]} (2)`]
+      : models;
+  const results = set.rows.map((row) => ({ row, replies: [], scores: [], pair: null }));
 
   for (const [m, model] of models.entries()) {
     for (const [i, result] of results.entries()) {
-      const messages = [{ role: 'system', content: character.trainingPrompt }, ...conversation(result.row)];
+      const messages = [
+        { role: 'system', content: character.trainingPrompt },
+        ...conversation(result.row),
+      ];
       result.replies[m] = await chatFresh(messages, { model });
       if ((i + 1) % 20 === 0) console.log(`  ${set.name}: ${labels[m]} ${i + 1}/${results.length}`);
     }
   }
 
   for (const [i, result] of results.entries()) {
-    for (const m of models.keys()) result.scores[m] = await score(judge, result.row, result.replies[m]);
+    for (const m of models.keys())
+      result.scores[m] = await score(judge, result.row, result.replies[m]);
     result.realScore = await score(judge, result.row, realReply(result.row));
-    if (models.length === 2) result.pair = await compare(judge, result.row, i, result.replies[0], result.replies[1]);
+    if (models.length === 2)
+      result.pair = await compare(judge, result.row, i, result.replies[0], result.replies[1]);
     if ((i + 1) % 20 === 0) console.log(`  ${set.name}: judged ${i + 1}/${results.length}`);
   }
 
   const summaries = labels.map((label, m) => ({
     label,
-    ...averages(results.map(r => r.scores[m])),
-    words: mean(results.map(r => r.replies[m].split(/\s+/).length)),
+    ...averages(results.map((r) => r.scores[m])),
+    words: mean(results.map((r) => r.replies[m].split(/\s+/).length)),
     broken: Object.entries(RULES)
-      .map(([rule, breaks]) => [rule, results.filter(r => breaks(r.replies[m])).length])
+      .map(([rule, breaks]) => [rule, results.filter((r) => breaks(r.replies[m])).length])
       .filter(([, count]) => count > 0),
   }));
   summaries.push({
     label: 'her real lines',
-    ...averages(results.map(r => r.realScore)),
-    words: mean(results.map(r => realReply(r.row).split(/\s+/).length)),
+    ...averages(results.map((r) => r.realScore)),
+    words: mean(results.map((r) => realReply(r.row).split(/\s+/).length)),
     broken: [],
   });
 
-  const head = results.map(r => r.pair);
+  const head = results.map((r) => r.pair);
   const headToHead =
     models.length === 2
       ? {
-          wins: [head.filter(p => p === 0).length, head.filter(p => p === 1).length],
-          unread: head.filter(p => p === null).length,
+          wins: [head.filter((p) => p === 0).length, head.filter((p) => p === 1).length],
+          unread: head.filter((p) => p === null).length,
         }
       : null;
   if (headToHead) headToHead.p = signTest(...headToHead.wins);
@@ -246,14 +264,14 @@ async function runSet(set, models, judge) {
   return { name: set.name, labels, results, summaries, headToHead };
 }
 
-const number = value => (Number.isNaN(value) ? '-' : value.toFixed(2));
+const number = (value) => (Number.isNaN(value) ? '-' : value.toFixed(2));
 
 function summaryTable(run) {
   const lines = [
     '| | voice | in character | words | rules broken |',
     '| --- | --- | --- | --- | --- |',
     ...run.summaries.map(
-      s =>
+      (s) =>
         `| ${s.label} | ${number(s.voice)} | ${number(s.inCharacter)} | ${s.words.toFixed(1)} | ${
           s.broken.map(([rule, count]) => `${rule}: ${count}`).join(', ') || 'none'
         } |`
@@ -279,13 +297,17 @@ function checkSummary({ wrongVoice, wrongPlace, total }) {
 function transcript(run) {
   return run.results
     .map(({ row, replies, scores, realScore }) => {
-      const scoreText = s => (s ? `voice ${s.voice}, in character ${s.in_character}` : 'unread');
-      const quote = text => text.replace(/\n/g, '\n> ');
+      const scoreText = (s) => (s ? `voice ${s.voice}, in character ${s.in_character}` : 'unread');
+      const quote = (text) => text.replace(/\n/g, '\n> ');
       return [
         `### ${row.source ?? ''}`,
         `> ${quote(contextText(row).slice(-400))}`,
         '',
-        ...run.labels.flatMap((label, m) => [`**${label}** (${scoreText(scores[m])})`, `> ${quote(replies[m])}`, '']),
+        ...run.labels.flatMap((label, m) => [
+          `**${label}** (${scoreText(scores[m])})`,
+          `> ${quote(replies[m])}`,
+          '',
+        ]),
         `**her real line** (${scoreText(realScore)})`,
         `> ${quote(realReply(row))}`,
       ].join('\n');
@@ -295,13 +317,13 @@ function transcript(run) {
 
 function timestamp() {
   const d = new Date();
-  const pad = n => String(n).padStart(2, '0');
+  const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
 }
 
 async function main() {
   const { models, judge, limit } = parseArgs();
-  const sets = SETS.map(set => readSet(set, limit)).filter(Boolean);
+  const sets = SETS.map((set) => readSet(set, limit)).filter(Boolean);
   if (sets.length === 0) {
     console.error('❌ No held-out data. Run `npm run export:script` first.');
     process.exit(1);
@@ -332,7 +354,7 @@ async function main() {
   }
 
   if (!existsSync(EVAL_DIR)) mkdirSync(EVAL_DIR, { recursive: true });
-  const name = models.map(m => m.replace(/[^\w.-]+/g, '_')).join('-vs-');
+  const name = models.map((m) => m.replace(/[^\w.-]+/g, '_')).join('-vs-');
   const outPath = join(EVAL_DIR, `holdout-${name}-${timestamp()}.md`);
   writeFileSync(
     outPath,
@@ -341,8 +363,8 @@ async function main() {
       `${new Date().toISOString()} · judged by ${judge}`,
       warning,
       `## Judge check\n\n\`\`\`\n${checkSummary(check)}\n\`\`\``,
-      ...runs.flatMap(run => [`## ${run.name}\n\n${summaryTable(run)}`]),
-      ...runs.flatMap(run => [`## Replies: ${run.name}\n\n${transcript(run)}`]),
+      ...runs.flatMap((run) => [`## ${run.name}\n\n${summaryTable(run)}`]),
+      ...runs.flatMap((run) => [`## Replies: ${run.name}\n\n${transcript(run)}`]),
     ]
       .filter(Boolean)
       .join('\n\n')
@@ -350,7 +372,7 @@ async function main() {
   console.log(`\n✅ Saved the scores and every reply to ${outPath}`);
 }
 
-main().catch(error => {
+main().catch((error) => {
   console.error('❌ Eval failed:', error.message);
   process.exit(1);
 });

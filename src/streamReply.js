@@ -19,10 +19,10 @@ export function createStreamer(message) {
     lastUpdate = Date.now();
     shown = trimmed;
     inFlight = (sent ? sent.edit(trimmed) : message.reply(trimmed))
-      .then(result => {
+      .then((result) => {
         sent ??= result;
       })
-      .catch(error => console.warn('⚠️  Could not update the streamed reply:', error.message))
+      .catch((error) => console.warn('⚠️  Could not update the streamed reply:', error.message))
       .finally(() => {
         inFlight = null;
       });
@@ -40,7 +40,7 @@ export function createStreamer(message) {
       if (!sent) return message.reply(text.slice(0, REPLY_LIMIT));
       if (shown !== text.slice(0, REPLY_LIMIT)) {
         // A rejected edit only costs the last few words, so it isn't a failed reply.
-        await sent.edit(text.slice(0, REPLY_LIMIT)).catch(error => {
+        await sent.edit(text.slice(0, REPLY_LIMIT)).catch((error) => {
           console.warn('⚠️  Could not finish the streamed reply:', error.message);
         });
       }

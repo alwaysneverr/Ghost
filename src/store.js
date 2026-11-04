@@ -93,14 +93,21 @@ export function saveChannel(channelId) {
          past_replies = excluded.past_replies,
          updated_at = excluded.updated_at`
     )
-    .run(channelId, JSON.stringify(channel.history), JSON.stringify(channel.pastReplies), channel.updatedAt);
+    .run(
+      channelId,
+      JSON.stringify(channel.history),
+      JSON.stringify(channel.pastReplies),
+      channel.updatedAt
+    );
 }
 
 // Keeps the most recent facts once someone goes over the limit.
 export function addFact(userId, scope, fact) {
   const now = Date.now();
   database()
-    .prepare('INSERT OR IGNORE INTO user_facts (user_id, scope, fact, created_at) VALUES (?, ?, ?, ?)')
+    .prepare(
+      'INSERT OR IGNORE INTO user_facts (user_id, scope, fact, created_at) VALUES (?, ?, ?, ?)'
+    )
     .run(userId, scope, fact, now);
   database()
     .prepare(
@@ -120,7 +127,7 @@ export function getFacts(userId, scope, limit = MAX_FACTS_PER_PERSON) {
        ORDER BY created_at DESC, rowid DESC LIMIT ?`
     )
     .all(userId, scope, limit)
-    .map(row => row.fact);
+    .map((row) => row.fact);
 }
 
 // Everything held on a person, in every server and DM, for /memory show.
@@ -138,7 +145,9 @@ export function forgetFacts(userId) {
 // Returns the reminder with its id.
 export function addReminder({ userId, channelId, reason, minutes, dueAt }) {
   const { lastInsertRowid } = database()
-    .prepare('INSERT INTO reminders (user_id, channel_id, reason, minutes, due_at) VALUES (?, ?, ?, ?, ?)')
+    .prepare(
+      'INSERT INTO reminders (user_id, channel_id, reason, minutes, due_at) VALUES (?, ?, ?, ?, ?)'
+    )
     .run(userId, channelId, reason, minutes, dueAt);
   return { id: Number(lastInsertRowid), userId, channelId, reason, minutes, dueAt };
 }
@@ -147,7 +156,7 @@ export function getReminders() {
   return database()
     .prepare('SELECT * FROM reminders ORDER BY due_at')
     .all()
-    .map(row => ({
+    .map((row) => ({
       id: row.id,
       userId: row.user_id,
       channelId: row.channel_id,
@@ -167,7 +176,7 @@ export function hasReminder(id) {
 }
 
 export function getRemindersFor(userId) {
-  return getReminders().filter(reminder => reminder.userId === userId);
+  return getReminders().filter((reminder) => reminder.userId === userId);
 }
 
 export function deleteReminder(id) {
@@ -176,11 +185,18 @@ export function deleteReminder(id) {
 
 // How much is stored, for /status.
 export function counts() {
-  const count = table => database().prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n;
-  return { conversations: count('channel_state'), facts: count('user_facts'), reminders: count('reminders') };
+  const count = (table) => database().prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n;
+  return {
+    conversations: count('channel_state'),
+    facts: count('user_facts'),
+    reminders: count('reminders'),
+  };
 }
 
 // Only theirs: anyone can try any number. Returns whether there was one to delete.
 export function deleteReminderFor(userId, id) {
-  return database().prepare('DELETE FROM reminders WHERE id = ? AND user_id = ?').run(id, userId).changes > 0;
+  return (
+    database().prepare('DELETE FROM reminders WHERE id = ? AND user_id = ?').run(id, userId)
+      .changes > 0
+  );
 }

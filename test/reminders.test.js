@@ -10,7 +10,15 @@ const DB = join(TEST_DIR, 'reminders.db');
 
 // In order, on one database: before-restart and after-restart are two processes, so
 // that really is a restart in between.
-for (const step of ['old-schema', 'deliver', 'units', 'long', 'before-restart', 'after-restart', 'failures']) {
+for (const step of [
+  'old-schema',
+  'deliver',
+  'units',
+  'long',
+  'before-restart',
+  'after-restart',
+  'failures',
+]) {
   test(`reminders: ${step}`, () => {
     const run = spawnSync(process.execPath, ['--no-warnings', STEPS, step], {
       env: { ...process.env, GHOST_DB_PATH: DB },

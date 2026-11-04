@@ -22,16 +22,20 @@ const MIN_USEFUL_RATINGS = 200;
 
 function main() {
   const exchanges = loadRatedExchanges();
-  const decided = exchanges.filter(ex => ex.score !== 0);
-  const liked = decided.filter(ex => ex.score > 0).length;
-  const ties = exchanges.filter(ex => ex.rated && ex.score === 0).length;
+  const decided = exchanges.filter((ex) => ex.score !== 0);
+  const liked = decided.filter((ex) => ex.score > 0).length;
+  const ties = exchanges.filter((ex) => ex.rated && ex.score === 0).length;
 
-  console.log(`📊 ${exchanges.length} logged exchange(s): ${liked} 👍, ${decided.length - liked} 👎, ${ties} tied (dropped).`);
+  console.log(
+    `📊 ${exchanges.length} logged exchange(s): ${liked} 👍, ${decided.length - liked} 👎, ${ties} tied (dropped).`
+  );
   if (decided.length < MIN_USEFUL_RATINGS) {
-    console.warn(`⚠️  Only ${decided.length} rated replies. Aim for at least ${MIN_USEFUL_RATINGS}, with both 👍 and 👎, before trusting a preference-tuned model.`);
+    console.warn(
+      `⚠️  Only ${decided.length} rated replies. Aim for at least ${MIN_USEFUL_RATINGS}, with both 👍 and 👎, before trusting a preference-tuned model.`
+    );
   }
 
-  const rows = decided.map(ex => ({
+  const rows = decided.map((ex) => ({
     prompt: [
       { role: 'system', content: character.trainingPrompt },
       { role: 'user', content: ex.userMessage },
@@ -40,7 +44,7 @@ function main() {
     label: ex.score > 0,
   }));
 
-  writeFileSync(OUTPUT_PATH, rows.map(r => JSON.stringify(r)).join('\n'));
+  writeFileSync(OUTPUT_PATH, rows.map((r) => JSON.stringify(r)).join('\n'));
   console.log(`✅ Wrote ${rows.length} example(s) to ${OUTPUT_PATH}`);
 }
 

@@ -32,9 +32,9 @@ export function loadRatedExchanges() {
     }
   }
 
-  return [...exchanges.values()].map(exchange => {
+  return [...exchanges.values()].map((exchange) => {
     const cast = [...(votes.get(exchange.messageId)?.values() ?? [])];
-    const up = cast.filter(rating => rating === 'up').length;
+    const up = cast.filter((rating) => rating === 'up').length;
     return { ...exchange, rated: cast.length > 0, score: up - (cast.length - up) };
   });
 }

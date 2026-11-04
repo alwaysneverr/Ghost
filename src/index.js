@@ -22,7 +22,7 @@ client.commands = new Collection();
 
 // ── Load Commands ──────────────────────────────────────────────────────────────
 const commandsPath = join(__dirname, 'commands');
-const commandFiles = readdirSync(commandsPath).filter(f => f.endsWith('.js'));
+const commandFiles = readdirSync(commandsPath).filter((f) => f.endsWith('.js'));
 
 for (const file of commandFiles) {
   const command = (await import(pathToFileURL(join(commandsPath, file)).href)).default;
@@ -36,7 +36,7 @@ for (const file of commandFiles) {
 
 // ── Load Events ────────────────────────────────────────────────────────────────
 const eventsPath = join(__dirname, 'events');
-const eventFiles = readdirSync(eventsPath).filter(f => f.endsWith('.js'));
+const eventFiles = readdirSync(eventsPath).filter((f) => f.endsWith('.js'));
 
 for (const file of eventFiles) {
   const event = (await import(pathToFileURL(join(eventsPath, file)).href)).default;

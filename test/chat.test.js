@@ -38,7 +38,10 @@ async function say(channel, content, { id = '2', name = 'Ana', dm = true } = {})
 
 const last = () => ollama.calls.at(-1);
 const lastPrompt = () => last().messages[0].content;
-const lastTurns = () => last().messages.slice(1).map((m) => m.content);
+const lastTurns = () =>
+  last()
+    .messages.slice(1)
+    .map((m) => m.content);
 
 test('a short conversation goes to the model whole', async () => {
   for (let i = 1; i <= 3; i++) await say('short', `message ${i}`);

@@ -26,18 +26,18 @@ const cache = new Map();
 let warned = false;
 
 const SENTENCE_END = /(?<=[.!?…])\s+/;
-const wordCount = sentence => sentence.split(/\s+/).filter(word => /[a-z]/i.test(word)).length;
+const wordCount = (sentence) => sentence.split(/\s+/).filter((word) => /[a-z]/i.test(word)).length;
 // The name the bot adds in code (maybeAddName) isn't something she chose to say.
-const withoutName = reply => reply.replace(/,? Nine(?=[.!?…"”']*$)/, '');
+const withoutName = (reply) => reply.replace(/,? Nine(?=[.!?…"”']*$)/, '');
 
 async function vectorsFor(sentences) {
-  const missing = [...new Set(sentences.filter(sentence => !cache.has(sentence)))];
+  const missing = [...new Set(sentences.filter((sentence) => !cache.has(sentence)))];
   if (missing.length > 0) {
     const vectors = await embedBatch(missing);
     missing.forEach((sentence, i) => cache.set(sentence, vectors[i]));
     while (cache.size > MAX_CACHED) cache.delete(cache.keys().next().value);
   }
-  return sentences.map(sentence => cache.get(sentence));
+  return sentences.map((sentence) => cache.get(sentence));
 }
 
 // Cuts the sentences that mean what she said in her last few replies. If the reply
@@ -47,27 +47,33 @@ async function vectorsFor(sentences) {
 export async function dropSimilarSentences(reply, earlierReplies, { keepFirst = false } = {}) {
   if (THRESHOLD >= 1) return reply;
   const sentences = reply.split(SENTENCE_END);
-  const judged = sentences.filter(sentence => wordCount(sentence) >= MIN_WORDS);
+  const judged = sentences.filter((sentence) => wordCount(sentence) >= MIN_WORDS);
   const earlier = [...new Set(earlierReplies)]
     .slice(-LOOKBACK)
-    .flatMap(earlierReply => withoutName(earlierReply).split(SENTENCE_END))
-    .filter(sentence => wordCount(sentence) >= MIN_WORDS);
+    .flatMap((earlierReply) => withoutName(earlierReply).split(SENTENCE_END))
+    .filter((sentence) => wordCount(sentence) >= MIN_WORDS);
   if (judged.length === 0 || earlier.length === 0) return reply;
 
   let vectors;
   try {
     vectors = await vectorsFor([...judged, ...earlier]);
   } catch (error) {
-    if (!warned) console.warn('⚠️  Could not compare replies by meaning, so only exact wording is checked:', error.message);
+    if (!warned)
+      console.warn(
+        '⚠️  Could not compare replies by meaning, so only exact wording is checked:',
+        error.message
+      );
     warned = true;
     return reply;
   }
   const earlierVectors = vectors.slice(judged.length);
   const repeats = new Set(
-    judged.filter((sentence, i) => earlierVectors.some(vector => cosineSimilarity(vectors[i], vector) >= THRESHOLD))
+    judged.filter((sentence, i) =>
+      earlierVectors.some((vector) => cosineSimilarity(vectors[i], vector) >= THRESHOLD)
+    )
   );
 
   const [first, ...rest] = sentences;
   if (!keepFirst && repeats.has(first)) return '';
-  return [first, ...rest.filter(sentence => !repeats.has(sentence))].join(' ');
+  return [first, ...rest.filter((sentence) => !repeats.has(sentence))].join(' ');
 }

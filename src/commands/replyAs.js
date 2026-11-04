@@ -35,13 +35,18 @@ export default {
       await refuse(`I'm not answerin' myself, Nine.`);
       return;
     }
-    const content = target.content.replace(new RegExp(`<@!?${interaction.client.user.id}>`, 'g'), '').trim();
+    const content = target.content
+      .replace(new RegExp(`<@!?${interaction.client.user.id}>`, 'g'), '')
+      .trim();
     if (!content) {
       await refuse(`There's nothin' there I can read, Nine.`);
       return;
     }
 
-    const name = cleanName(target.member?.displayName ?? target.author.displayName ?? target.author.username, target.author.id);
+    const name = cleanName(
+      target.member?.displayName ?? target.author.displayName ?? target.author.username,
+      target.author.id
+    );
     await answerInCommand(interaction, {
       content,
       speakerId: target.author.id,

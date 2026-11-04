@@ -26,7 +26,7 @@ process.on('exit', () => {
 // A made-up embedding: the same text always gets the same vector, and different texts
 // get unrelated ones, unless sameMeaning says two sentences mean the same thing.
 function fakeEmbedding(text, sameMeaning) {
-  const key = sameMeaning.find(group => group.includes(text))?.[0] ?? text;
+  const key = sameMeaning.find((group) => group.includes(text))?.[0] ?? text;
   let seed = [...key].reduce((hash, ch) => (hash * 31 + ch.charCodeAt(0)) >>> 0, 7);
   return Array.from({ length: 64 }, () => {
     seed = (seed * 1103515245 + 12345) >>> 0;
@@ -44,20 +44,26 @@ export function stubOllama(replies = [], { sameMeaning = [], selfHarm = [] } = {
   const calls = [];
   const embedded = [];
   const jsonCalls = [];
-  const word = () => Array.from({ length: 7 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join('');
+  const word = () =>
+    Array.from({ length: 7 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join(
+      ''
+    );
   globalThis.fetch = async (url, options) => {
     const body = JSON.parse(options.body);
     if (String(url).endsWith('/api/embed')) {
       const texts = Array.isArray(body.input) ? body.input : [body.input];
       embedded.push(...texts);
-      return Response.json({ embeddings: texts.map(text => fakeEmbedding(text, sameMeaning)) });
+      return Response.json({ embeddings: texts.map((text) => fakeEmbedding(text, sameMeaning)) });
     }
     if (body.format) {
       jsonCalls.push(body);
       if (body.format.properties?.self_harm) {
         const asked = body.messages.at(-1).content;
-        const flagged = selfHarm.some(reply => asked.endsWith(`The reply: ${reply}`));
-        return Response.json({ message: { content: JSON.stringify({ self_harm: flagged }) }, done_reason: 'stop' });
+        const flagged = selfHarm.some((reply) => asked.endsWith(`The reply: ${reply}`));
+        return Response.json({
+          message: { content: JSON.stringify({ self_harm: flagged }) },
+          done_reason: 'stop',
+        });
       }
       return Response.json({ message: { content: '{"facts":[]}' }, done_reason: 'stop' });
     }

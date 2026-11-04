@@ -14,7 +14,13 @@ import 'dotenv/config';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { parseScriptFile, listScriptFiles, targetAliases, isTargetRow, renderRows } from './lib/script-parser.js';
+import {
+  parseScriptFile,
+  listScriptFiles,
+  targetAliases,
+  isTargetRow,
+  renderRows,
+} from './lib/script-parser.js';
 import { embedBatch } from '../src/rag.js';
 import { readSceneIndex, writeSceneIndex, SCENE_INDEX_PATH } from '../src/sceneIndex.js';
 
@@ -71,7 +77,7 @@ async function embedAll(chunks) {
   for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
     const batch = chunks.slice(i, i + EMBED_BATCH_SIZE);
     try {
-      const embeddings = await embedBatch(batch.map(chunk => chunk.text));
+      const embeddings = await embedBatch(batch.map((chunk) => chunk.text));
       batch.forEach((chunk, j) => embedded.push({ ...chunk, embedding: embeddings[j] }));
     } catch (error) {
       console.warn(`⚠️  Batch failed (${error.message}), trying its scenes one at a time.`);
@@ -80,7 +86,10 @@ async function embedAll(chunks) {
           const [embedding] = await embedBatch([chunk.text]);
           embedded.push({ ...chunk, embedding });
         } catch (singleError) {
-          console.error(`⚠️  Failed to embed ${chunk.file}:${chunk.lineStart}:`, singleError.message);
+          console.error(
+            `⚠️  Failed to embed ${chunk.file}:${chunk.lineStart}:`,
+            singleError.message
+          );
         }
       }
     }
@@ -91,7 +100,9 @@ async function embedAll(chunks) {
 
 async function main() {
   if (!existsSync(SCRIPTS_DIR)) {
-    console.error(`❌ ${SCRIPTS_DIR} does not exist. Create it and copy your script files there first.`);
+    console.error(
+      `❌ ${SCRIPTS_DIR} does not exist. Create it and copy your script files there first.`
+    );
     process.exit(1);
   }
 
@@ -109,25 +120,29 @@ async function main() {
     const rows = parseScriptFile(text);
     const chunks = buildChunks(rows, file);
     allChunks.push(...chunks);
-    console.log(`  ${file}: ${rows.length} lines → ${chunks.length} chunk(s) featuring the target character`);
+    console.log(
+      `  ${file}: ${rows.length} lines → ${chunks.length} chunk(s) featuring the target character`
+    );
   }
 
   // Embeddings from a different model can't be compared, so none of them carry over.
   const previous = readSceneIndex();
   const reusable = previous?.model === EMBED_MODEL ? previous.scenes : [];
-  const known = new Map(reusable.map(scene => [scene.text, scene.embedding]));
+  const known = new Map(reusable.map((scene) => [scene.text, scene.embedding]));
 
-  const unchanged = allChunks.filter(chunk => known.has(chunk.text));
-  const changed = allChunks.filter(chunk => !known.has(chunk.text));
+  const unchanged = allChunks.filter((chunk) => known.has(chunk.text));
+  const changed = allChunks.filter((chunk) => !known.has(chunk.text));
 
-  console.log(`\n🧠 ${unchanged.length} scene(s) unchanged. Embedding ${changed.length} with "${EMBED_MODEL}"...`);
+  console.log(
+    `\n🧠 ${unchanged.length} scene(s) unchanged. Embedding ${changed.length} with "${EMBED_MODEL}"...`
+  );
   const embedded = await embedAll(changed);
 
   // Back in script order, whichever group each scene came from.
-  const byText = new Map(embedded.map(chunk => [chunk.text, chunk.embedding]));
+  const byText = new Map(embedded.map((chunk) => [chunk.text, chunk.embedding]));
   const indexed = allChunks
-    .map(chunk => ({ ...chunk, embedding: known.get(chunk.text) ?? byText.get(chunk.text) }))
-    .filter(chunk => chunk.embedding);
+    .map((chunk) => ({ ...chunk, embedding: known.get(chunk.text) ?? byText.get(chunk.text) }))
+    .filter((chunk) => chunk.embedding);
 
   writeSceneIndex(indexed, EMBED_MODEL);
   console.log(`\n✅ Wrote ${indexed.length} embedded chunks to ${SCENE_INDEX_PATH}`);

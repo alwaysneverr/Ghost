@@ -10,7 +10,8 @@ const MAX_SHOWN_REASON = 80;
 
 // Discord shows <t:…:R> as "in 3 hours" in each person's own time zone.
 const when = (dueAt) => `<t:${Math.floor(dueAt / 1000)}:R>`;
-const short = (text) => (text.length > MAX_SHOWN_REASON ? `${text.slice(0, MAX_SHOWN_REASON - 1)}…` : text);
+const short = (text) =>
+  text.length > MAX_SHOWN_REASON ? `${text.slice(0, MAX_SHOWN_REASON - 1)}…` : text;
 
 export default {
   data: new SlashCommandBuilder()
@@ -48,7 +49,9 @@ export default {
       .filter((reminder) => `${reminder.id} ${reminder.reason}`.toLowerCase().includes(typed))
       .slice(0, 25)
       .map((reminder) => ({
-        name: short(`#${reminder.id}: ${reminder.reason} (${describeMinutes(reminder.minutes)})`).slice(0, 100),
+        name: short(
+          `#${reminder.id}: ${reminder.reason} (${describeMinutes(reminder.minutes)})`
+        ).slice(0, 100),
         value: reminder.id,
       }));
     await interaction.respond(choices);

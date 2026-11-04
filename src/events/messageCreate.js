@@ -40,9 +40,7 @@ export default {
     // Only respond in DMs, or when directly @mentioned in a server.
     if (!isDM && !isMentioned) return;
 
-    const content = message.content
-      .replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '')
-      .trim();
+    const content = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
 
     const channelId = message.channel.id;
 
@@ -52,8 +50,10 @@ export default {
 
     // Bare/empty ping — no actual message, just a quick in-character rant
     if (isMentioned && !content) {
-      const chosenRant = pingRants[Math.floor(Math.random() * pingRants.length)]
-        .replace('{user}', message.author.toString());
+      const chosenRant = pingRants[Math.floor(Math.random() * pingRants.length)].replace(
+        '{user}',
+        message.author.toString()
+      );
 
       try {
         await message.reply(chosenRant);
@@ -108,7 +108,9 @@ export default {
 
       console.error('❌ Chat error:', error);
       try {
-        await message.reply(`❌ ${character.name} isn't responding — check that Ollama is running and reachable on the workstation.`);
+        await message.reply(
+          `❌ ${character.name} isn't responding — check that Ollama is running and reachable on the workstation.`
+        );
       } catch (_error) {
         // e.g. channel deleted mid-flight — ignore
       }

@@ -39,14 +39,23 @@ function readRows(path) {
     console.warn(`⚠️  ${path} not found, skipping it.`);
     return [];
   }
-  return readFileSync(path, 'utf-8').split('\n').filter(Boolean).map(line => JSON.parse(line));
+  return readFileSync(path, 'utf-8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
 }
 
 // The same conversation, ignoring case, punctuation and the system prompt.
 function dedupeKey(row) {
   return row.messages
-    .filter(m => m.role !== 'system')
-    .map(m => `${m.role}:${m.content.toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, '').trim()}`)
+    .filter((m) => m.role !== 'system')
+    .map(
+      (m) =>
+        `${m.role}:${m.content
+          .toLowerCase()
+          .replace(/[^\p{L}\p{N} ]+/gu, '')
+          .trim()}`
+    )
     .join('|');
 }
 
@@ -76,8 +85,8 @@ function main() {
   const syntheticRows = process.argv.includes('--synthetic') ? readRows(SYNTHETIC_PATH) : [];
 
   const seen = new Set();
-  const unique = rows =>
-    rows.filter(row => {
+  const unique = (rows) =>
+    rows.filter((row) => {
       const key = dedupeKey(row);
       if (seen.has(key)) return false;
       seen.add(key);
@@ -98,17 +107,31 @@ function main() {
   }
 
   const stale = [...uniqueScript, ...uniqueLogs, ...uniqueSynthetic].filter(
-    row => row.messages.find(m => m.role === 'system')?.content !== character.trainingPrompt
+    (row) => row.messages.find((m) => m.role === 'system')?.content !== character.trainingPrompt
   ).length;
   if (stale > 0) {
-    console.warn(`⚠️  ${stale} example(s) were exported with an older persona. Re-run export:script and export:logs before training.`);
+    console.warn(
+      `⚠️  ${stale} example(s) were exported with an older persona. Re-run export:script and export:logs before training.`
+    );
   }
 
   const duplicates =
-    scriptRows.length + logRows.length + syntheticRows.length - uniqueScript.length - uniqueLogs.length - uniqueSynthetic.length;
-  console.log(`📊 ${uniqueScript.length} script example(s) × ${weight}, ${uniqueLogs.length} from logs, ${uniqueSynthetic.length} synthetic, ${duplicates} duplicate(s) dropped.`);
+    scriptRows.length +
+    logRows.length +
+    syntheticRows.length -
+    uniqueScript.length -
+    uniqueLogs.length -
+    uniqueSynthetic.length;
+  console.log(
+    `📊 ${uniqueScript.length} script example(s) × ${weight}, ${uniqueLogs.length} from logs, ${uniqueSynthetic.length} synthetic, ${duplicates} duplicate(s) dropped.`
+  );
 
-  writeFileSync(OUTPUT_PATH, shuffled(merged, SHUFFLE_SEED).map(r => JSON.stringify(r)).join('\n'));
+  writeFileSync(
+    OUTPUT_PATH,
+    shuffled(merged, SHUFFLE_SEED)
+      .map((r) => JSON.stringify(r))
+      .join('\n')
+  );
   console.log(`✅ Wrote ${merged.length} example(s) to ${OUTPUT_PATH}`);
 }
 

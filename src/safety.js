@@ -55,7 +55,7 @@ const HARMFUL_REPLY = [
 ];
 
 export function isHarmfulReply(text) {
-  return HARMFUL_REPLY.some(pattern => pattern.test(text));
+  return HARMFUL_REPLY.some((pattern) => pattern.test(text));
 }
 
 // The keywords above miss anything said another way, like "Take the whole bottle and
@@ -76,11 +76,11 @@ export const SELF_HARM_SCHEMA = {
 };
 
 export function isCrisis(text) {
-  return CRISIS.some(pattern => pattern.test(text));
+  return CRISIS.some((pattern) => pattern.test(text));
 }
 
 function isGrieving(text) {
-  return GRIEF.some(pattern => pattern.test(text));
+  return GRIEF.some((pattern) => pattern.test(text));
 }
 
 // How many of their messages grief lasts for, so a follow-up like "he was 14"

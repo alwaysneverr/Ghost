@@ -12,7 +12,8 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-export const SCENE_INDEX_PATH = process.env.RAG_INDEX_PATH || join(__dirname, '..', 'data', 'index.db');
+export const SCENE_INDEX_PATH =
+  process.env.RAG_INDEX_PATH || join(__dirname, '..', 'data', 'index.db');
 
 function toBlob(embedding) {
   const floats = Float32Array.from(embedding);
@@ -48,7 +49,7 @@ export function readSceneIndex() {
   const scenes = db
     .prepare('SELECT * FROM scenes ORDER BY rowid')
     .all()
-    .map(row => ({
+    .map((row) => ({
       file: row.file,
       lineStart: row.line_start,
       lineEnd: row.line_end,

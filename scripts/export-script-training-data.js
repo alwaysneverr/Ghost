@@ -153,7 +153,7 @@ function pickHoldoutFiles(examples) {
   const counts = new Map();
   for (const { file } of examples) counts.set(file, (counts.get(file) ?? 0) + 1);
 
-  const hash = file => createHash('sha256').update(file).digest('hex');
+  const hash = (file) => createHash('sha256').update(file).digest('hex');
   const target = Math.round(examples.length * HOLDOUT_SHARE);
   const held = new Set();
   let total = 0;
@@ -168,7 +168,11 @@ function pickHoldoutFiles(examples) {
 // Her line, ignoring case and punctuation. "Yeah." turns up all over the script, and
 // a test line she trained on elsewhere isn't a fair test.
 function replyKey(example) {
-  return example.messages.at(-1).content.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  return example.messages
+    .at(-1)
+    .content.toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 }
 
 function main() {
@@ -189,15 +193,15 @@ function main() {
     const rows = parseScriptFile(text);
     const turns = groupIntoTurns(rows);
     const examples = buildExamples(turns);
-    all.push(...examples.map(example => ({ ...example, file })));
+    all.push(...examples.map((example) => ({ ...example, file })));
     console.log(`  ${file}: ${rows.length} lines → ${examples.length} example(s)`);
   }
 
   const heldFiles = pickHoldoutFiles(all);
-  const train = all.filter(example => !heldFiles.has(example.file));
+  const train = all.filter((example) => !heldFiles.has(example.file));
   const seenInTraining = new Set(train.map(replyKey));
-  const heldOut = all.filter(example => heldFiles.has(example.file));
-  const holdout = heldOut.filter(example => !seenInTraining.has(replyKey(example)));
+  const heldOut = all.filter((example) => heldFiles.has(example.file));
+  const holdout = heldOut.filter((example) => !seenInTraining.has(replyKey(example)));
 
   writeFileSync(OUTPUT_PATH, train.map(({ messages }) => JSON.stringify({ messages })).join('\n'));
   writeFileSync(
@@ -208,8 +212,12 @@ function main() {
   );
 
   console.log(`\n✅ Wrote ${train.length} training example(s) to ${OUTPUT_PATH}`);
-  console.log(`✅ Wrote ${holdout.length} held-out example(s) from ${heldFiles.size} file(s) to ${HOLDOUT_PATH}`);
-  console.log(`   Set aside and not used at all, because she says the same line in training: ${heldOut.length - holdout.length}`);
+  console.log(
+    `✅ Wrote ${holdout.length} held-out example(s) from ${heldFiles.size} file(s) to ${HOLDOUT_PATH}`
+  );
+  console.log(
+    `   Set aside and not used at all, because she says the same line in training: ${heldOut.length - holdout.length}`
+  );
 }
 
 main();

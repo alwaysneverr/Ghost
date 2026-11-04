@@ -28,7 +28,11 @@ const MAX_TIMER_MS = 2 ** 31 - 1;
 // "90 minutes", "3 hours", "2 days".
 export function describeMinutes(minutes) {
   const [amount, unit] =
-    minutes % 1440 === 0 ? [minutes / 1440, 'day'] : minutes % 60 === 0 ? [minutes / 60, 'hour'] : [minutes, 'minute'];
+    minutes % 1440 === 0
+      ? [minutes / 1440, 'day']
+      : minutes % 60 === 0
+        ? [minutes / 60, 'hour']
+        : [minutes, 'minute'];
   return `${amount} ${unit}${amount === 1 ? '' : 's'}`;
 }
 
@@ -75,11 +79,17 @@ async function deliver(client, reminder) {
     deleteReminder(reminder.id);
   } catch (error) {
     if (Date.now() - reminder.dueAt >= GIVE_UP_AFTER_MS) {
-      console.warn(`⚠️  Dropping reminder ${reminder.id}, which can't be delivered:`, error.message);
+      console.warn(
+        `⚠️  Dropping reminder ${reminder.id}, which can't be delivered:`,
+        error.message
+      );
       deleteReminder(reminder.id);
       return;
     }
-    console.warn(`⚠️  Could not deliver reminder ${reminder.id}, trying again later:`, error.message);
+    console.warn(
+      `⚠️  Could not deliver reminder ${reminder.id}, trying again later:`,
+      error.message
+    );
     setTimeout(() => deliver(client, reminder), RETRY_AFTER_MS);
   }
 }

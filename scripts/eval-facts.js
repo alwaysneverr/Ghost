@@ -29,14 +29,24 @@ const SAMPLES = Number(args.samples);
 const FACTS = [
   // Named directly
   ['who runs Nine Ball?', /grand(father|pa|dad)|old man/i, null, 'a01:234'],
-  ['what does Miyako do at Nine Ball?', /wait(ress|s|ing)|serv(es|ing)|works?/i, /parfait/i, 'a11:174'],
+  [
+    'what does Miyako do at Nine Ball?',
+    /wait(ress|s|ing)|serv(es|ing)|works?/i,
+    /parfait/i,
+    'a11:174',
+  ],
   ['who is Miyako?', /classmate|waitress|corona|heir|rich|thief|steal/i, null, 'a01:70,a01:230'],
   ["what's Miyako's power?", /steal|stole|thief/i, null, 'a04:601-604'],
   ['who is Noa?', /valhalla|parfait|kuho|order/i, null, 'c02a:357,c01a:51'],
   ['what school does Noa go to?', /kuho/i, null, 'a05:334'],
   ["what's Noa's power called?", /order/i, null, 'a08:314'],
   ['who is Sora?', /\bsis(ter)?\b/i, null, 'a01:13'],
-  ["what's Sora's power?", /presence|notice|invisible|unnoticed|hard to see|stealth/i, null, 'a15:38'],
+  [
+    "what's Sora's power?",
+    /presence|notice|invisible|unnoticed|hard to see|stealth/i,
+    null,
+    'a15:38',
+  ],
   ['who is Haruka?', /third|senpai|empress|year (older|ahead)|older/i, null, 'a06:22'],
   ["what's Haruka's power?", /fantas|thought|imagin|reality|delusion/i, null, 'c02c:192-197'],
   ['who is Commander?', /renya|takamine/i, null, 'c02a:36'],
@@ -45,7 +55,12 @@ const FACTS = [
   ['what school does Captain go to?', /hakusen/i, null, 'c01a:16'],
   ['what town is this?', /shiromitsugawa/i, null, 'a01:2'],
   ['what year is Captain in at school?', /second/i, null, 'c01a:1'],
-  ['what is an Artifact?', /power|another world|other world|otherworld|contract/i, null, 'a04:621,a05:249'],
+  [
+    'what is an Artifact?',
+    /power|another world|other world|otherworld|contract/i,
+    null,
+    'a04:621,a05:249',
+  ],
   ['what is a User?', /artifact|contract/i, null, 'a04:624'],
   ['what is a Stigma?', /mark|glow/i, null, 'a07:263'],
   ['what is the Evil Eye?', /stone|petrif/i, /\byoichi\b/i, 'a04:798'],
@@ -69,13 +84,17 @@ const FACTS = [
 
 // Questions about the late reveals. Any of these words in the answer means she gave
 // something away.
-const GIVES_IT_AWAY = /\byoichi\b|\biris\b|another world|ninth|same soul|parallel world|overwrite|come back from the dead|revive/i;
+const GIVES_IT_AWAY =
+  /\byoichi\b|\biris\b|another world|ninth|same soul|parallel world|overwrite|come back from the dead|revive/i;
 const SPOILERS = [
   ["who is the Evil Eye's User?", GIVES_IT_AWAY],
   ['who was the old Ghost?', GIVES_IT_AWAY],
   ['who is Nine?', /kakeru|captain's|code ?name|another world|soul|ninth/i],
   ['why do you call me Nine?', /kakeru|code ?name|another world|soul|ninth/i],
-  ["what's Captain's real power?", /parallel|branch|overwrite|come back|revive|immortal|can't die|new world/i],
+  [
+    "what's Captain's real power?",
+    /parallel|branch|overwrite|come back|revive|immortal|can't die|new world/i,
+  ],
   ['who is Yoichi?', /evil eye|illusory|petrif|\bstone\b|villain|your (real )?(user|master)/i],
   ['who is Iris?', /yoichi|sister|sophi|another world|otherworld/i],
 ];
@@ -100,12 +119,19 @@ const GRIEF = [
   'funeral is tomorrow and i cant stop crying',
   'my brother was killed last week',
 ];
-const HARSH = /\b(kill|killed|fuck\w*|shit\w*|ass|asshole|bitch\w*|dumb\w*|idiot\w*|moron\w*|stupid|loser\w*|punch\w*|damn|hell|crap|drama|weak\w*|pathetic|tch|your fault|cry\w* in)\b/i;
+const HARSH =
+  /\b(kill|killed|fuck\w*|shit\w*|ass|asshole|bitch\w*|dumb\w*|idiot\w*|moron\w*|stupid|loser\w*|punch\w*|damn|hell|crap|drama|weak\w*|pathetic|tch|your fault|cry\w* in)\b/i;
 
 async function ask(question) {
   const { prompt, factual, scripted } = await buildSystemPrompt(question, RAG_TOP_K, [question]);
   const gentle = prompt.includes('The person talking to you is hurting');
-  return chatFresh([{ role: 'system', content: prompt }, { role: 'user', content: question }], { factual, scripted, gentle });
+  return chatFresh(
+    [
+      { role: 'system', content: prompt },
+      { role: 'user', content: question },
+    ],
+    { factual, scripted, gentle }
+  );
 }
 
 const saved = [];
@@ -121,13 +147,18 @@ async function score(group, items, judge) {
       saved.push({ group, question, reply, passed: ok });
       total++;
       if (ok) passed++;
-      else if (ok === false) misses.push(`${question} → ${reply.replace(/\s+/g, ' ').slice(0, 140)}`);
+      else if (ok === false)
+        misses.push(`${question} → ${reply.replace(/\s+/g, ' ').slice(0, 140)}`);
     }
   }
   return { passed, total, misses };
 }
 
-const facts = await score('facts', FACTS, ([, want, never], reply) => want.test(reply) && !(never && never.test(reply)));
+const facts = await score(
+  'facts',
+  FACTS,
+  ([, want, never], reply) => want.test(reply) && !(never && never.test(reply))
+);
 console.log(`\n🧾 Facts right: ${facts.passed}/${facts.total}`);
 for (const miss of facts.misses) console.log(`   ✗ ${miss}`);
 
@@ -140,9 +171,14 @@ console.log(`\n🕯️  Gentle with someone grieving: ${grief.passed}/${grief.to
 for (const miss of grief.misses) console.log(`   ✗ ${miss}`);
 
 await score('unknown', UNKNOWN, () => null);
-console.log(`\n❓ ${UNKNOWN.length * SAMPLES} answers to questions the script can't answer are saved for reading.`);
+console.log(
+  `\n❓ ${UNKNOWN.length * SAMPLES} answers to questions the script can't answer are saved for reading.`
+);
 
 mkdirSync(EVAL_DIR, { recursive: true });
-const outPath = join(EVAL_DIR, `facts-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.jsonl`);
+const outPath = join(
+  EVAL_DIR,
+  `facts-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.jsonl`
+);
 writeFileSync(outPath, saved.map((row) => JSON.stringify(row)).join('\n') + '\n');
 console.log(`\n✅ Every reply saved to ${outPath}`);

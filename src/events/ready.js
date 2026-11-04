@@ -12,7 +12,9 @@ async function loadModels() {
     await Promise.all([warmUp(), warmUpRetrieval()]);
     console.log(`🔥 Models loaded in ${((Date.now() - started) / 1000).toFixed(1)}s.`);
   } catch (error) {
-    console.warn(`⚠️  Couldn't load the models (${error.message}). Is Ollama running? She'll try again on the first message.`);
+    console.warn(
+      `⚠️  Couldn't load the models (${error.message}). Is Ollama running? She'll try again on the first message.`
+    );
   }
 }
 

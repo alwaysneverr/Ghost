@@ -77,7 +77,7 @@ function overlap(a, b) {
   const setA = new Set(wordsOf(a));
   const setB = new Set(wordsOf(b));
   if (setA.size === 0 || setB.size === 0) return 0;
-  const shared = [...setA].filter(word => setB.has(word)).length;
+  const shared = [...setA].filter((word) => setB.has(word)).length;
   return shared / (setA.size + setB.size - shared);
 }
 
@@ -90,8 +90,10 @@ function opener(text) {
 function copiesPrompt(reply, promptWords) {
   return reply
     .split(/(?<=[.!?…])\s+/)
-    .map(sentence => wordsOf(sentence).join(' '))
-    .some(sentence => sentence.split(' ').length >= MIN_COPIED_WORDS && promptWords.includes(sentence));
+    .map((sentence) => wordsOf(sentence).join(' '))
+    .some(
+      (sentence) => sentence.split(' ').length >= MIN_COPIED_WORDS && promptWords.includes(sentence)
+    );
 }
 
 function phrasesOf(text) {
@@ -106,7 +108,7 @@ function phrasesOf(text) {
 function captainFits(theirWords, lastReply) {
   const last = theirWords.at(-1);
   return (
-    theirWords.some(words => CAPTAIN.test(words)) ||
+    theirWords.some((words) => CAPTAIN.test(words)) ||
     /^(?:\w+\s+)?who\b/i.test(last) ||
     (/\b(?:he|him|his)\b/i.test(last) && CAPTAIN.test(lastReply))
   );
@@ -126,25 +128,26 @@ function dropHabits(reply, earlierReplies, theirWords, mustAnswer) {
   const captainTooSoon =
     !mustAnswer &&
     !captainFits(theirWords, recent.at(-1) ?? '') &&
-    recent.slice(-CAPTAIN_LOOKBACK).some(earlier => CAPTAIN.test(earlier));
-  const isHabit = sentence =>
+    recent.slice(-CAPTAIN_LOOKBACK).some((earlier) => CAPTAIN.test(earlier));
+  const isHabit = (sentence) =>
     CALLS_THEM_CAPTAIN.test(sentence) ||
-    phrasesOf(sentence).some(phrase => usedPhrases.has(phrase)) ||
+    phrasesOf(sentence).some((phrase) => usedPhrases.has(phrase)) ||
     (captainTooSoon && CAPTAIN.test(sentence));
 
   const [first, ...rest] = reply.split(/(?<=[.!?…])\s+/);
   if (!mustAnswer && isHabit(first)) return '';
-  return [first, ...rest.filter(sentence => !isHabit(sentence))].join(' ');
+  return [first, ...rest.filter((sentence) => !isHabit(sentence))].join(' ');
 }
 
 // How much a reply repeats what she's already said, from 0 (new) to 1 (a copy).
 function staleness(reply, earlierReplies, promptWords) {
   if (copiesPrompt(reply, promptWords)) return 1;
 
-  const closest = Math.max(0, ...earlierReplies.map(earlier => overlap(reply, earlier)));
+  const closest = Math.max(0, ...earlierReplies.map((earlier) => overlap(reply, earlier)));
   // "7" has no words to open on, and that doesn't make it the same as the last "7".
   const start = opener(reply);
-  const sameOpener = start && earlierReplies.slice(-OPENER_LOOKBACK).some(e => opener(e) === start);
+  const sameOpener =
+    start && earlierReplies.slice(-OPENER_LOOKBACK).some((e) => opener(e) === start);
   return sameOpener ? Math.max(closest, SAME_REPLY_OVERLAP) : closest;
 }
 
@@ -185,14 +188,17 @@ export async function chatFresh(
     scripted = false,
     gentle = false,
     onToken = null,
-  } = {},
+  } = {}
 ) {
   const earlierReplies = [
     ...pastReplies,
-    ...messages.filter(m => m.role === 'assistant').map(m => m.content),
+    ...messages.filter((m) => m.role === 'assistant').map((m) => m.content),
   ];
   const promptWords = wordsOf(messages[0].content).join(' ');
-  const theirWords = messages.filter(m => m.role === 'user').slice(-2).map(m => m.content);
+  const theirWords = messages
+    .filter((m) => m.role === 'user')
+    .slice(-2)
+    .map((m) => m.content);
 
   // Each retry sees less of what she's said: first only the last exchange, so "does it
   // hurt?" still means something, then only their message. Quoting the reply she'd just
@@ -213,13 +219,14 @@ export async function chatFresh(
       model,
       temperature,
       factual ? 1 : SAMPLING.repeat_penalty,
-      attempt === 0 ? onToken : null,
+      attempt === 0 ? onToken : null
     );
     if (isHarmfulReply(raw)) continue;
 
     const mustAnswer = factual || scripted;
     let kept = gentle ? raw : dropHabits(raw, earlierReplies, theirWords, mustAnswer);
-    if (kept && !gentle) kept = await dropSimilarSentences(kept, earlierReplies, { keepFirst: mustAnswer });
+    if (kept && !gentle)
+      kept = await dropSimilarSentences(kept, earlierReplies, { keepFirst: mustAnswer });
     const reply = kept || raw;
     const score = kept
       ? staleness(reply, earlierReplies, promptWords)
@@ -252,11 +259,15 @@ async function encouragesSelfHarm(theirMessage, reply) {
         { role: 'system', content: SELF_HARM_CHECK },
         { role: 'user', content: `Their message: ${theirMessage}\nThe reply: ${reply}` },
       ],
-      SELF_HARM_SCHEMA,
+      SELF_HARM_SCHEMA
     );
     return self_harm === true;
   } catch (error) {
-    if (!checkWarned) console.warn('⚠️  Could not check a reply for self-harm, so only the keywords were checked:', error.message);
+    if (!checkWarned)
+      console.warn(
+        '⚠️  Could not check a reply for self-harm, so only the keywords were checked:',
+        error.message
+      );
     checkWarned = true;
     return false;
   }
@@ -346,7 +357,7 @@ async function readStream(response, onToken) {
   let content = '';
   let doneReason = null;
 
-  const readLine = line => {
+  const readLine = (line) => {
     const part = JSON.parse(line);
     if (part.done) doneReason = part.done_reason;
     if (part.message?.content) {

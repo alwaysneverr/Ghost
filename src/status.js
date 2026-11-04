@@ -15,13 +15,17 @@ import { counts } from './store.js';
 const CHAT_MODEL = process.env.OLLAMA_MODEL || 'qwen3:8b';
 // Long enough for a slow machine, short of Discord's 15 minutes by a wide margin.
 const OLLAMA_TIMEOUT_MS = 3000;
-const VERSION = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf-8')).version;
+const VERSION = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf-8')
+).version;
 
 // Ollama calls "bge-m3" "bge-m3:latest".
-const fullName = name => (name.includes(':') ? name : `${name}:latest`);
+const fullName = (name) => (name.includes(':') ? name : `${name}:latest`);
 
 async function ollama(path) {
-  const res = await fetch(`${OLLAMA_URL}${path}`, { signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS) });
+  const res = await fetch(`${OLLAMA_URL}${path}`, {
+    signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
+  });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -33,11 +37,11 @@ async function ollamaStatus() {
       ollama('/api/tags'),
       ollama('/api/ps'),
     ]);
-    const model = name => {
-      const running = loaded.find(m => m.name === fullName(name));
+    const model = (name) => {
+      const running = loaded.find((m) => m.name === fullName(name));
       return {
         name,
-        installed: installed.some(m => m.name === fullName(name)),
+        installed: installed.some((m) => m.name === fullName(name)),
         loaded: Boolean(running),
         gpuBytes: running?.size_vram ?? 0,
         context: running?.context_length ?? null,
@@ -46,7 +50,10 @@ async function ollamaStatus() {
     };
     return { reachable: true, version, models: [model(CHAT_MODEL), model(EMBED_MODEL)] };
   } catch (error) {
-    return { reachable: false, error: error.name === 'TimeoutError' ? 'no answer in 3 seconds' : error.message };
+    return {
+      reachable: false,
+      error: error.name === 'TimeoutError' ? 'no answer in 3 seconds' : error.message,
+    };
   }
 }
 
@@ -63,10 +70,17 @@ export async function gatherStatus(client) {
     ollama: await ollamaStatus(),
     url: OLLAMA_URL,
     keepAlive: OLLAMA_KEEP_ALIVE,
-    discord: { servers: client.guilds.cache.size, pingMs: Math.round(client.ws.ping), uptimeMs: client.uptime },
+    discord: {
+      servers: client.guilds.cache.size,
+      pingMs: Math.round(client.ws.ping),
+      uptimeMs: client.uptime,
+    },
     scenes: safely(sceneCounts),
     stored: safely(counts),
-    logs: LOG_FILES.map(path => ({ name: basename(path), bytes: existsSync(path) ? statSync(path).size : 0 })),
+    logs: LOG_FILES.map((path) => ({
+      name: basename(path),
+      bytes: existsSync(path) ? statSync(path).size : 0,
+    })),
     messageLogDays: MESSAGE_LOG_DAYS,
     replyCheck: REPLY_CHECK,
     process: { node: process.version, version: VERSION, memoryBytes: process.memoryUsage().rss },

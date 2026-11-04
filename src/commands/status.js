@@ -9,8 +9,12 @@ import { warmUp } from '../llm.js';
 import { warmUpRetrieval } from '../rag.js';
 import { gatherStatus } from '../status.js';
 
-const size = bytes =>
-  bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${(bytes / 1e3).toFixed(1)} KB`;
+const size = (bytes) =>
+  bytes >= 1e9
+    ? `${(bytes / 1e9).toFixed(1)} GB`
+    : bytes >= 1e6
+      ? `${(bytes / 1e6).toFixed(1)} MB`
+      : `${(bytes / 1e3).toFixed(1)} KB`;
 
 function duration(ms) {
   const minutes = Math.round(ms / 60000);
@@ -20,8 +24,10 @@ function duration(ms) {
 }
 
 function modelLine(model, now) {
-  if (!model.installed) return `🔴 ${model.name} isn't installed. Run \`ollama pull ${model.name}\`.`;
-  if (!model.loaded) return `⚪ ${model.name} isn't loaded, so the next reply waits for it (about 7 seconds).`;
+  if (!model.installed)
+    return `🔴 ${model.name} isn't installed. Run \`ollama pull ${model.name}\`.`;
+  if (!model.loaded)
+    return `⚪ ${model.name} isn't loaded, so the next reply waits for it (about 7 seconds).`;
   const context = model.context ? `, ${model.context} context` : '';
   const unloads = model.unloadsAt ? `, unloads in ${duration(model.unloadsAt - now)}` : '';
   return `🟢 ${model.name} loaded (${size(model.gpuBytes)} on the GPU${context}${unloads})`;
@@ -35,9 +41,13 @@ export function formatStatus(status, now = Date.now()) {
     lines.push(`🟢 Ollama ${ollama.version} at ${status.url}`);
     for (const model of ollama.models) lines.push(`   ${modelLine(model, now)}`);
   } else {
-    lines.push(`🔴 Can't reach Ollama at ${status.url} (${ollama.error}). She can't reply until it's running.`);
+    lines.push(
+      `🔴 Can't reach Ollama at ${status.url} (${ollama.error}). She can't reply until it's running.`
+    );
   }
-  lines.push(`🟢 Discord: ${discord.servers} server(s), ${discord.pingMs} ms ping, up ${duration(discord.uptimeMs ?? 0)}`);
+  lines.push(
+    `🟢 Discord: ${discord.servers} server(s), ${discord.pingMs} ms ping, up ${duration(discord.uptimeMs ?? 0)}`
+  );
   lines.push(
     scenes.error
       ? `🔴 Scenes: ${scenes.error}`
@@ -55,9 +65,15 @@ export function formatStatus(status, now = Date.now()) {
       ? '🛡️ Replies are checked for self-harm by keywords and by the chat model'
       : '⚠️ Replies are checked for self-harm by keywords only (REPLY_CHECK=false)'
   );
-  const kept = status.messageLogDays ? `kept for ${status.messageLogDays} day(s)` : 'kept until you delete it';
-  lines.push(`📝 Logs: ${logs.map(log => `${log.name} ${size(log.bytes)}`).join(', ')}. The message log is ${kept}.`);
-  lines.push(`⚙️ Ghost ${process.version}, Node ${process.node}, ${size(process.memoryBytes)} in use, models kept loaded for ${status.keepAlive}`);
+  const kept = status.messageLogDays
+    ? `kept for ${status.messageLogDays} day(s)`
+    : 'kept until you delete it';
+  lines.push(
+    `📝 Logs: ${logs.map((log) => `${log.name} ${size(log.bytes)}`).join(', ')}. The message log is ${kept}.`
+  );
+  lines.push(
+    `⚙️ Ghost ${process.version}, Node ${process.node}, ${size(process.memoryBytes)} in use, models kept loaded for ${status.keepAlive}`
+  );
   return lines.join('\n');
 }
 
@@ -78,7 +94,10 @@ export default {
       ApplicationIntegrationType.UserInstall,
     ])
     .addBooleanOption((option) =>
-      option.setName('load_models').setDescription('Load the models now, so nobody waits for them').setRequired(false)
+      option
+        .setName('load_models')
+        .setDescription('Load the models now, so nobody waits for them')
+        .setRequired(false)
     ),
 
   async execute(interaction) {

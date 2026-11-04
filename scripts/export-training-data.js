@@ -18,14 +18,18 @@ const OUTPUT_PATH = join(__dirname, '..', 'data', 'training-data.jsonl');
 
 function main() {
   const exchanges = loadRatedExchanges();
-  const approved = exchanges.filter(ex => ex.score > 0);
+  const approved = exchanges.filter((ex) => ex.score > 0);
 
-  console.log(`📊 ${exchanges.length} logged exchange(s), ${approved.length} approved (👍) for training.`);
+  console.log(
+    `📊 ${exchanges.length} logged exchange(s), ${approved.length} approved (👍) for training.`
+  );
   if (approved.length < 50) {
-    console.warn(`⚠️  Only ${approved.length} approved examples — aim for a few hundred for a meaningful fine-tune. Keep chatting and rating good replies.`);
+    console.warn(
+      `⚠️  Only ${approved.length} approved examples — aim for a few hundred for a meaningful fine-tune. Keep chatting and rating good replies.`
+    );
   }
 
-  const trainingRows = approved.map(ex => ({
+  const trainingRows = approved.map((ex) => ({
     messages: [
       { role: 'system', content: character.trainingPrompt },
       { role: 'user', content: ex.userMessage },
@@ -33,7 +37,7 @@ function main() {
     ],
   }));
 
-  writeFileSync(OUTPUT_PATH, trainingRows.map(r => JSON.stringify(r)).join('\n'));
+  writeFileSync(OUTPUT_PATH, trainingRows.map((r) => JSON.stringify(r)).join('\n'));
   console.log(`✅ Wrote ${trainingRows.length} training example(s) to ${OUTPUT_PATH}`);
 }
 

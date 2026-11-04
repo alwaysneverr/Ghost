@@ -87,7 +87,9 @@ export default {
       .replace('{sender}', () => `${sender}`)
       .replace('{message}', () => message);
 
-    console.log(`💬 ${sender.username} (${sender.id}) used /tell${target ? ` for ${target.username}` : ''}: ${message.slice(0, 200)}`);
+    console.log(
+      `💬 ${sender.username} (${sender.id}) used /tell${target ? ` for ${target.username}` : ''}: ${message.slice(0, 200)}`
+    );
 
     // Only the person it's for gets pinged: nobody named in the message, and no @everyone.
     await interaction.reply({

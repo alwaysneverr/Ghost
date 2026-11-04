@@ -52,7 +52,7 @@ export function cleanName(raw, userId) {
 // the safety checks and retrieval read. Names only appear once there's more than
 // one person: a DM stays a plain conversation.
 function toModelMessages(history) {
-  const speakers = new Set(history.map(m => m.speakerId).filter(Boolean));
+  const speakers = new Set(history.map((m) => m.speakerId).filter(Boolean));
   return history.map(({ role, content, speaker }) => ({
     role,
     content: speakers.size > 1 && speaker ? `${speaker}: ${content}` : content,
@@ -69,7 +69,9 @@ function maybeAddName(reply) {
 // Whether this message, with what came before it in the channel, is someone grieving
 // or in crisis. Asked before replying, so the logs can withhold it.
 export function isSensitive(channelId, content) {
-  const earlier = getChannel(channelId).history.filter(m => m.role === 'user').map(m => m.content);
+  const earlier = getChannel(channelId)
+    .history.filter((m) => m.role === 'user')
+    .map((m) => m.content);
   return needsGentleReply([...earlier, content]);
 }
 
@@ -79,7 +81,14 @@ export function isSensitive(channelId, content) {
 // Returns her reply, and whether it can be rated and kept as training data: not on
 // someone's worst day. If the model fails, their message is taken back out of history
 // and the error is thrown.
-export async function converse({ channelId, speakerId, speakerName, content, scope, startStream = null }) {
+export async function converse({
+  channelId,
+  speakerId,
+  speakerName,
+  content,
+  scope,
+  startStream = null,
+}) {
   const channel = getChannel(channelId);
   const { history } = channel;
   const theirMessage = { role: 'user', content, speaker: speakerName, speakerId };
@@ -87,11 +96,11 @@ export async function converse({ channelId, speakerId, speakerName, content, sco
   trimHistory(history);
 
   try {
-    let userMessages = history.filter(m => m.role === 'user').map(m => m.content);
+    let userMessages = history.filter((m) => m.role === 'user').map((m) => m.content);
 
     // A crisis has just scrolled out of history. Start fresh, or the model
     // sees a conversation full of the fixed text and starts copying it.
-    if (!inCrisis(userMessages) && history.some(m => m.content === character.crisisFollowUp)) {
+    if (!inCrisis(userMessages) && history.some((m) => m.content === character.crisisFollowUp)) {
       history.splice(0, history.length - 1);
       userMessages = [content];
     }
@@ -110,7 +119,10 @@ export async function converse({ channelId, speakerId, speakerName, content, sco
       // the whole conversation.
       const gentle = needsGentleReply(userMessages);
       const start = gentle ? 0 : recentStart(history);
-      const earlier = history.slice(0, start).filter(m => m.role === 'user').map(m => m.content);
+      const earlier = history
+        .slice(0, start)
+        .filter((m) => m.role === 'user')
+        .map((m) => m.content);
       const { prompt, factual, scripted } = await buildSystemPrompt(
         content,
         RAG_TOP_K,
@@ -119,20 +131,25 @@ export async function converse({ channelId, speakerId, speakerName, content, sco
         isGroup
           ? {
               speaker: speakerName,
-              recent: history.filter(m => m.role === 'user' && m !== theirMessage).slice(-MAX_GROUP_LINES),
+              recent: history
+                .filter((m) => m.role === 'user' && m !== theirMessage)
+                .slice(-MAX_GROUP_LINES),
             }
           : null,
         isGroup ? [] : earlier
       );
       // Nothing half-written on someone's worst day.
       const streamer = gentle ? null : startStream?.();
-      reply = await chatFresh([{ role: 'system', content: prompt }, ...modelMessages.slice(start)], {
-        pastReplies: channel.pastReplies,
-        factual,
-        scripted,
-        gentle,
-        onToken: streamer?.update,
-      });
+      reply = await chatFresh(
+        [{ role: 'system', content: prompt }, ...modelMessages.slice(start)],
+        {
+          pastReplies: channel.pastReplies,
+          factual,
+          scripted,
+          gentle,
+          onToken: streamer?.update,
+        }
+      );
       if (!gentle) reply = maybeAddName(reply);
       channel.pastReplies = [...channel.pastReplies, reply].slice(-MAX_PAST_REPLIES);
     }
@@ -144,7 +161,8 @@ export async function converse({ channelId, speakerId, speakerName, content, sco
   } catch (error) {
     // She never answered it, so it mustn't sit in history as an unanswered message.
     const unanswered = history.lastIndexOf(theirMessage);
-    if (unanswered >= 0 && history[unanswered + 1]?.role !== 'assistant') history.splice(unanswered, 1);
+    if (unanswered >= 0 && history[unanswered + 1]?.role !== 'assistant')
+      history.splice(unanswered, 1);
     throw error;
   }
 }

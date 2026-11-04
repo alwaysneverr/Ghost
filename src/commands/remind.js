@@ -56,7 +56,9 @@ export default {
     const reason = interaction.options.getString('reason');
 
     if (minutes > MAX_REMINDER_MINUTES) {
-      await interaction.editReply(`A month, tops, Nine. I'm not keepin' track of your life for longer than that.`);
+      await interaction.editReply(
+        `A month, tops, Nine. I'm not keepin' track of your life for longer than that.`
+      );
       return;
     }
 
@@ -67,7 +69,9 @@ export default {
       minutes,
     });
     if (!created) {
-      await interaction.editReply(`You've already got a pile of these waiting, Nine. Do some of them first.`);
+      await interaction.editReply(
+        `You've already got a pile of these waiting, Nine. Do some of them first.`
+      );
       return;
     }
 

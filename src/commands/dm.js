@@ -39,7 +39,7 @@ export default {
       return;
     }
 
-    const target =interaction.options.getUser('user');
+    const target = interaction.options.getUser('user');
     const message = interaction.options.getString('message');
 
     try {

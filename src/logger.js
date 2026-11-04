@@ -35,15 +35,18 @@ function ensureLogDir() {
 // if someone reacts to it.
 export function logExchange({ messageId, channelId, userId, userMessage, botReply }) {
   ensureLogDir();
-  appendFileSync(LOG_PATH, JSON.stringify({
-    type: 'exchange',
-    timestamp: new Date().toISOString(),
-    messageId,
-    channelId,
-    userId,
-    userMessage,
-    botReply,
-  }) + '\n');
+  appendFileSync(
+    LOG_PATH,
+    JSON.stringify({
+      type: 'exchange',
+      timestamp: new Date().toISOString(),
+      messageId,
+      channelId,
+      userId,
+      userMessage,
+      botReply,
+    }) + '\n'
+  );
 }
 
 // One row in messages.jsonl and one line in the console. withheld records that
@@ -54,21 +57,24 @@ function writeMessage(message, content, withheld, { direction, icon, label, extr
   const attachments = withheld
     ? []
     : [...message.attachments.values()].map(({ name, url }) => ({ name, url }));
-  appendFileSync(MESSAGE_LOG_PATH, JSON.stringify({
-    type: 'message',
-    direction,
-    timestamp: new Date().toISOString(),
-    messageId: message.id,
-    userId: message.author.id,
-    username: message.author.username,
-    guildId: message.guildId,
-    guildName: message.guild?.name ?? null,
-    channelId: message.channel.id,
-    ...extra,
-    content: withheld ? null : content,
-    attachments,
-    withheld,
-  }) + '\n');
+  appendFileSync(
+    MESSAGE_LOG_PATH,
+    JSON.stringify({
+      type: 'message',
+      direction,
+      timestamp: new Date().toISOString(),
+      messageId: message.id,
+      userId: message.author.id,
+      username: message.author.username,
+      guildId: message.guildId,
+      guildName: message.guild?.name ?? null,
+      channelId: message.channel.id,
+      ...extra,
+      content: withheld ? null : content,
+      attachments,
+      withheld,
+    }) + '\n'
+  );
 
   const shown = withheld
     ? '(withheld: grief or crisis)'
@@ -121,9 +127,12 @@ export function logSent(message) {
       return;
     }
 
-    const theirs = getChannel(message.channel.id).history.filter(m => m.role === 'user').map(m => m.content);
+    const theirs = getChannel(message.channel.id)
+      .history.filter((m) => m.role === 'user')
+      .map((m) => m.content);
     const command = message.interactionMetadata;
-    const recipientId = !command && message.channel.isDMBased?.() ? message.channel.recipientId : null;
+    const recipientId =
+      !command && message.channel.isDMBased?.() ? message.channel.recipientId : null;
     const to = recipientId && recipientId !== message.author.id ? recipientId : null;
     const toName = to ? (message.client.users.cache.get(to)?.username ?? null) : null;
     const commandName = message.interaction?.commandName;
@@ -151,13 +160,16 @@ export function logSent(message) {
 
 export function logRating({ messageId, rating, raterId }) {
   ensureLogDir();
-  appendFileSync(LOG_PATH, JSON.stringify({
-    type: 'rating',
-    timestamp: new Date().toISOString(),
-    messageId,
-    rating, // 'up' | 'down'
-    raterId,
-  }) + '\n');
+  appendFileSync(
+    LOG_PATH,
+    JSON.stringify({
+      type: 'rating',
+      timestamp: new Date().toISOString(),
+      messageId,
+      rating, // 'up' | 'down'
+      raterId,
+    }) + '\n'
+  );
 }
 
 // Deletes messages.jsonl entries older than MESSAGE_LOG_DAYS, and returns how many.
@@ -167,7 +179,7 @@ export function pruneMessageLog({ days = MESSAGE_LOG_DAYS, now = Date.now() } = 
   if (!days || !existsSync(MESSAGE_LOG_PATH)) return 0;
   const cutoff = now - days * DAY_MS;
   const lines = readFileSync(MESSAGE_LOG_PATH, 'utf-8').split('\n').filter(Boolean);
-  const kept = lines.filter(line => {
+  const kept = lines.filter((line) => {
     try {
       const time = Date.parse(JSON.parse(line).timestamp);
       return Number.isNaN(time) || time >= cutoff;
@@ -178,7 +190,7 @@ export function pruneMessageLog({ days = MESSAGE_LOG_DAYS, now = Date.now() } = 
   if (kept.length === lines.length) return 0;
 
   const temp = `${MESSAGE_LOG_PATH}.tmp`;
-  writeFileSync(temp, kept.map(line => `${line}\n`).join(''));
+  writeFileSync(temp, kept.map((line) => `${line}\n`).join(''));
   renameSync(temp, MESSAGE_LOG_PATH);
   return lines.length - kept.length;
 }
@@ -190,7 +202,10 @@ export function startLogPruning() {
   const prune = () => {
     try {
       const removed = pruneMessageLog();
-      if (removed > 0) console.log(`🧹 Removed ${removed} message log entries older than ${MESSAGE_LOG_DAYS} day(s).`);
+      if (removed > 0)
+        console.log(
+          `🧹 Removed ${removed} message log entries older than ${MESSAGE_LOG_DAYS} day(s).`
+        );
     } catch (error) {
       console.warn('⚠️  Could not clear old message log entries:', error.message);
     }

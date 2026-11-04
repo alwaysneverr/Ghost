@@ -45,14 +45,33 @@ const MAX_REPLY_WORDS = 40;
 const MAX_ECHO = 0.5; // how much of her line's longer words the message can already contain
 
 // About someone in the scene: "She's dumping 'em all in" needs you to see her.
-const ABOUT_SOMEONE_THERE = /\b(?:she|she's|her|hers|he|he's|him|his|this guy|that guy|this girl|that girl)\b/i;
+const ABOUT_SOMEONE_THERE =
+  /\b(?:she|she's|her|hers|he|he's|him|his|this guy|that guy|this girl|that girl)\b/i;
 
 // Left to itself, nearly every message opened "bro" or "you think". Rotating the first
 // word is what fixed it: asking for variety didn't.
-const OPENERS = ['why', 'ok', 'so', 'lol', 'can', 'im', 'wait', 'hey', 'nah', 'what', 'you', 'just', 'how', 'dude', 'i', 'do'];
+const OPENERS = [
+  'why',
+  'ok',
+  'so',
+  'lol',
+  'can',
+  'im',
+  'wait',
+  'hey',
+  'nah',
+  'what',
+  'you',
+  'just',
+  'how',
+  'dude',
+  'i',
+  'do',
+];
 
 // Lines for someone else in the scene, not for one stranger.
-const SPEAKS_TO_A_GROUP = /\b(?:you two|you both|you guys|u guys|y'?all|you all|all of you|you people)\b/i;
+const SPEAKS_TO_A_GROUP =
+  /\b(?:you two|you both|you guys|u guys|y'?all|you all|all of you|you people)\b/i;
 
 const STORY_WORDS =
   /\b(?:captain|cap'n|kakeru|niimi|haruka|kosaka|empress|your highness|renya|takamine|commander|sora|miyako|kujo|noa|yuuki|sophie|sophitia|naruse|satsuki|onii-chan|artifacts?|stigmas?|valhalla|rig veda|sephirot)\b/i;
@@ -109,18 +128,26 @@ function flag(name) {
 }
 
 function readRows(path) {
-  return readFileSync(path, 'utf-8').split('\n').filter(Boolean).map(line => JSON.parse(line));
+  return readFileSync(path, 'utf-8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
 }
 
 function wordsOf(text) {
-  return new Set(text.toLowerCase().replace(/[’‘]/g, "'").match(/[\p{L}\p{N}']+/gu) ?? []);
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[’‘]/g, "'")
+      .match(/[\p{L}\p{N}']+/gu) ?? []
+  );
 }
 
 function overlap(a, b) {
   const setA = wordsOf(a);
   const setB = wordsOf(b);
   if (setA.size === 0 || setB.size === 0) return 0;
-  const shared = [...setA].filter(word => setB.has(word)).length;
+  const shared = [...setA].filter((word) => setB.has(word)).length;
   return shared / (setA.size + setB.size - shared);
 }
 
@@ -128,7 +155,8 @@ function overlap(a, b) {
 function replyProblem(reply) {
   if (STORY_WORDS.test(reply)) return 'her line names something in the story';
   if (CUT_OFF.test(reply)) return 'her line is cut off';
-  if (reply.split(/\s+/).length < MIN_REPLY_WORDS) return 'her line is too short to answer anything';
+  if (reply.split(/\s+/).length < MIN_REPLY_WORDS)
+    return 'her line is too short to answer anything';
   if (reply.split(/\s+/).length > MAX_REPLY_WORDS) return 'her line is a speech, not a chat reply';
   if (ABOUT_SOMEONE_THERE.test(reply)) return 'her line is about someone in the scene';
   if (SPOILERS.test(reply)) return 'her line has a spoiler';
@@ -146,11 +174,15 @@ function messageProblem(message, reply, seen) {
   if (!/^[\p{Script=Latin}\p{N}\p{P}\p{S}\s]+$/u.test(message)) return 'not English';
   if (needsGentleReply([message]) || HEAVY.test(message)) return 'message is about something heavy';
   if (SEXUAL.test(message)) return 'message has something sexual';
-  if (SPOILERS.test(message) || STORY_WORDS.test(message)) return 'message names something in the story';
+  if (SPOILERS.test(message) || STORY_WORDS.test(message))
+    return 'message names something in the story';
   if (overlap(message, reply) > MAX_REPLY_OVERLAP) return 'message repeats her line';
-  const longWords = [...wordsOf(reply)].filter(word => word.length > 3);
+  const longWords = [...wordsOf(reply)].filter((word) => word.length > 3);
   const messageWords = wordsOf(message);
-  if (longWords.length > 0 && longWords.filter(word => messageWords.has(word)).length / longWords.length >= MAX_ECHO) {
+  if (
+    longWords.length > 0 &&
+    longWords.filter((word) => messageWords.has(word)).length / longWords.length >= MAX_ECHO
+  ) {
     return 'message gives away her line';
   }
   if (seen.has([...wordsOf(message)].sort().join(' '))) return 'duplicate message';
@@ -160,9 +192,11 @@ function messageProblem(message, reply, seen) {
 // Whether the model picks her real line out of it and three others. The others are
 // spread evenly through the set, and the real one's position moves with the row.
 async function picksHerLine(message, reply, usable, i, model) {
-  const others = PICK_LETTERS.slice(1).map((_, k) => usable[(i + (k + 1) * Math.floor(usable.length / 4)) % usable.length]);
+  const others = PICK_LETTERS.slice(1).map(
+    (_, k) => usable[(i + (k + 1) * Math.floor(usable.length / 4)) % usable.length]
+  );
   const position = i % PICK_LETTERS.length;
-  const candidates = others.filter(other => other !== reply);
+  const candidates = others.filter((other) => other !== reply);
   candidates.splice(position, 0, reply);
   const choices = candidates
     .slice(0, PICK_LETTERS.length)
@@ -182,15 +216,17 @@ async function picksHerLine(message, reply, usable, i, model) {
 async function rewrite(rows, model, drops) {
   const seen = new Set();
   const kept = [];
-  const drop = reason => drops.set(reason, (drops.get(reason) ?? 0) + 1);
-  const usable = rows.map(row => row.messages.at(-1).content).filter(reply => !replyProblem(reply));
+  const drop = (reason) => drops.set(reason, (drops.get(reason) ?? 0) + 1);
+  const usable = rows
+    .map((row) => row.messages.at(-1).content)
+    .filter((reply) => !replyProblem(reply));
 
   for (const [i, row] of rows.entries()) {
     const reply = row.messages.at(-1).content;
     const context = row.messages
-      .filter(m => m.role !== 'system')
+      .filter((m) => m.role !== 'system')
       .slice(0, -1)
-      .map(m => (m.role === 'assistant' ? `Ghost: ${m.content}` : m.content))
+      .map((m) => (m.role === 'assistant' ? `Ghost: ${m.content}` : m.content))
       .join('\n')
       .slice(-CONTEXT_CHARS);
 
@@ -263,9 +299,10 @@ async function main() {
       console.error(`❌ Nothing survived: ${JSON.stringify([...drops])}`);
       process.exit(1);
     }
-    writeFileSync(output, kept.map(r => JSON.stringify(r)).join('\n'));
+    writeFileSync(output, kept.map((r) => JSON.stringify(r)).join('\n'));
     console.log(`✅ Wrote ${kept.length} of ${rows.length} to ${output}`);
-    for (const [reason, count] of [...drops].sort((a, b) => b[1] - a[1])) console.log(`   ${count}  ${reason}`);
+    for (const [reason, count] of [...drops].sort((a, b) => b[1] - a[1]))
+      console.log(`   ${count}  ${reason}`);
   }
 }
 

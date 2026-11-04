@@ -181,7 +181,8 @@ const situations = [
     hint: "Your whole answer: it's what Sophie calls you, so go ask her.",
   },
   {
-    match: /^(?:so\s+)?what are (?:you|ya)\b\??$|\bare (?:you|ya) (?:a\s+)?(?:human|real|alive)\b|\bwho (?:made|created) (?:you|ya)\b/i,
+    match:
+      /^(?:so\s+)?what are (?:you|ya)\b\??$|\bare (?:you|ya) (?:a\s+)?(?:human|real|alive)\b|\bwho (?:made|created) (?:you|ya)\b/i,
     hint: "You aren't human. You're an illusory body, and Captain made you with his Artifact.",
   },
   {
@@ -191,7 +192,8 @@ const situations = [
     hint: "Your whole answer: Commander's real name is Renya Takamine, and he's the chuuni who leads Rig Veda.",
   },
   {
-    match: /\bwho\b.*\b(?:start|found|creat|made|ma[dk]e|run|lead)\w*\b.*\brig veda\b|\bparadise for users\b/i,
+    match:
+      /\bwho\b.*\b(?:start|found|creat|made|ma[dk]e|run|lead)\w*\b.*\brig veda\b|\bparadise for users\b/i,
     hint: 'Your whole answer: Commander and the old Ghost started Rig Veda.',
   },
   {
@@ -224,7 +226,8 @@ const situations = [
   },
   {
     // She can't remember anything outside this conversation (see memory).
-    match: /\b(?:did|were)\s+(?:you|ya)\b.*\b(?:yesterday|last (?:night|week|time)|this morning)\b/i,
+    match:
+      /\b(?:did|were)\s+(?:you|ya)\b.*\b(?:yesterday|last (?:night|week|time)|this morning)\b/i,
     hint: "You don't remember that. It never happened as far as you know.",
   },
   {

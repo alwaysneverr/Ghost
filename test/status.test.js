@@ -5,10 +5,18 @@ import { Client, Team } from 'discord.js';
 import status, { formatStatus } from '../src/commands/status.js';
 import { gatherStatus } from '../src/status.js';
 
-const client = { guilds: { cache: { size: 3 } }, ws: { ping: 42.4 }, uptime: 2 * 3600000 + 15 * 60000 };
+const client = {
+  guilds: { cache: { size: 3 } },
+  ws: { ping: 42.4 },
+  uptime: 2 * 3600000 + 15 * 60000,
+};
 
 // Ollama's three status endpoints, answering as told.
-function fakeOllama({ down = false, installed = ['qwen3:8b', 'bge-m3:latest'], loaded = ['qwen3:8b', 'bge-m3:latest'] } = {}) {
+function fakeOllama({
+  down = false,
+  installed = ['qwen3:8b', 'bge-m3:latest'],
+  loaded = ['qwen3:8b', 'bge-m3:latest'],
+} = {}) {
   const calls = [];
   globalThis.fetch = async (url, options = {}) => {
     calls.push({ url: String(url), body: options.body });
@@ -18,10 +26,16 @@ function fakeOllama({ down = false, installed = ['qwen3:8b', 'bge-m3:latest'], l
     if (path === '/api/tags') return Response.json({ models: installed.map((name) => ({ name })) });
     if (path === '/api/ps') {
       return Response.json({
-        models: loaded.map((name) => ({ name, size_vram: 7.5e9, context_length: 16384, expires_at: new Date(Date.now() + 52 * 60000).toISOString() })),
+        models: loaded.map((name) => ({
+          name,
+          size_vram: 7.5e9,
+          context_length: 16384,
+          expires_at: new Date(Date.now() + 52 * 60000).toISOString(),
+        })),
       });
     }
-    if (path === '/api/chat') return Response.json({ message: { content: '' }, done_reason: 'load' });
+    if (path === '/api/chat')
+      return Response.json({ message: { content: '' }, done_reason: 'load' });
     if (path === '/api/embed') return Response.json({ embeddings: [[0.1, 0.2]] });
     return new Response('not found', { status: 404 });
   };
@@ -32,7 +46,10 @@ test('everything working: both models loaded, with when they unload', async () =
   fakeOllama();
   const text = formatStatus(await gatherStatus(client));
   assert.match(text, /🟢 Ollama 0\.40\.13/);
-  assert.match(text, /🟢 qwen3:8b loaded \(7\.5 GB on the GPU, 16384 context, unloads in 5\d min\)/);
+  assert.match(
+    text,
+    /🟢 qwen3:8b loaded \(7\.5 GB on the GPU, 16384 context, unloads in 5\d min\)/
+  );
   assert.match(text, /🟢 bge-m3 loaded/);
   assert.match(text, /3 server\(s\), 42 ms ping, up 2h 15m/);
   assert.match(text, /ghost\.db: \d+ conversation/);
@@ -42,18 +59,27 @@ test('everything working: both models loaded, with when they unload', async () =
 
 test('a model not loaded says the next reply will wait', async () => {
   fakeOllama({ loaded: ['bge-m3:latest'] });
-  assert.match(formatStatus(await gatherStatus(client)), /⚪ qwen3:8b isn't loaded, so the next reply waits/);
+  assert.match(
+    formatStatus(await gatherStatus(client)),
+    /⚪ qwen3:8b isn't loaded, so the next reply waits/
+  );
 });
 
 test('a model not installed says how to get it', async () => {
   fakeOllama({ installed: ['qwen3:8b'], loaded: ['qwen3:8b'] });
-  assert.match(formatStatus(await gatherStatus(client)), /🔴 bge-m3 isn't installed\. Run `ollama pull bge-m3`/);
+  assert.match(
+    formatStatus(await gatherStatus(client)),
+    /🔴 bge-m3 isn't installed\. Run `ollama pull bge-m3`/
+  );
 });
 
 test('Ollama down: says she cannot reply, and still shows the rest', async () => {
   fakeOllama({ down: true });
   const text = formatStatus(await gatherStatus(client));
-  assert.match(text, /🔴 Can't reach Ollama at http:\/\/localhost:11434 \(fetch failed\)\. She can't reply/);
+  assert.match(
+    text,
+    /🔴 Can't reach Ollama at http:\/\/localhost:11434 \(fetch failed\)\. She can't reply/
+  );
   assert.match(text, /Discord: 3 server/);
   assert.match(text, /💾 ghost\.db/);
 });
@@ -69,7 +95,15 @@ const team = new Team(discord, {
   name: 't',
   icon: null,
   owner_user_id: '100',
-  members: [{ role: 'admin', membership_state: 2, team_id: '9', permissions: ['*'], user: { id: '100', username: 'owner', discriminator: '0', avatar: null } }],
+  members: [
+    {
+      role: 'admin',
+      membership_state: 2,
+      team_id: '9',
+      permissions: ['*'],
+      user: { id: '100', username: 'owner', discriminator: '0', avatar: null },
+    },
+  ],
 });
 
 async function useStatus(userId, { load = false } = {}) {
@@ -80,7 +114,9 @@ async function useStatus(userId, { load = false } = {}) {
       client: { ...client, application: { fetch: async () => ({ owner: team }) } },
       user: { id: userId, username: `u${userId}` },
       options: { getBoolean: () => load },
-      deferReply: async (o) => { deferred = o; },
+      deferReply: async (o) => {
+        deferred = o;
+      },
       editReply: async (r) => replies.push(r),
     })
   );

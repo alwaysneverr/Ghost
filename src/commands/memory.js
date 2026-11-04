@@ -19,12 +19,16 @@ function describe(rows) {
 export default {
   data: new SlashCommandBuilder()
     .setName('memory')
-    .setDescription("See or wipe what she remembers about you.")
-    .addSubcommand(subcommand =>
-      subcommand.setName('show').setDescription('Show what she remembers about you. Only you can see it.')
+    .setDescription('See or wipe what she remembers about you.')
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('show')
+        .setDescription('Show what she remembers about you. Only you can see it.')
     )
-    .addSubcommand(subcommand =>
-      subcommand.setName('forget').setDescription('Delete everything she remembers about you, everywhere.')
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('forget')
+        .setDescription('Delete everything she remembers about you, everywhere.')
     )
     .setContexts([
       InteractionContextType.Guild,
@@ -42,7 +46,10 @@ export default {
     if (interaction.options.getSubcommand() === 'forget') {
       const count = forgetFacts(userId);
       await interaction.reply({
-        content: count > 0 ? `Done. ${count} thing(s) gone. Never heard of you.` : `I've got nothing on you anyway.`,
+        content:
+          count > 0
+            ? `Done. ${count} thing(s) gone. Never heard of you.`
+            : `I've got nothing on you anyway.`,
         flags: MessageFlags.Ephemeral,
       });
       return;

@@ -20,13 +20,23 @@ const contents = () => readFileSync(LOG, 'utf-8').split('\n').filter(Boolean);
 test('entries older than the limit go, newer ones stay, in order', () => {
   writeLog([row(45, 'old'), row(31, 'just too old'), row(29, 'recent'), row(0, 'today')]);
   assert.equal(pruneMessageLog({ days: 30, now: NOW }), 2);
-  assert.deepEqual(contents().map((line) => JSON.parse(line).content), ['recent', 'today']);
+  assert.deepEqual(
+    contents().map((line) => JSON.parse(line).content),
+    ['recent', 'today']
+  );
 });
 
 test('a line it cannot read or date is kept', () => {
-  writeLog([row(60, 'old'), 'not json at all', JSON.stringify({ type: 'message', content: 'no timestamp' })]);
+  writeLog([
+    row(60, 'old'),
+    'not json at all',
+    JSON.stringify({ type: 'message', content: 'no timestamp' }),
+  ]);
   assert.equal(pruneMessageLog({ days: 30, now: NOW }), 1);
-  assert.deepEqual(contents(), ['not json at all', JSON.stringify({ type: 'message', content: 'no timestamp' })]);
+  assert.deepEqual(contents(), [
+    'not json at all',
+    JSON.stringify({ type: 'message', content: 'no timestamp' }),
+  ]);
 });
 
 test('with no limit set, nothing is touched', () => {
@@ -44,7 +54,10 @@ test('nothing old: the file is left as it was, and no temp file is left behind',
 });
 
 test('the training log is never pruned', () => {
-  writeFileSync(CONVERSATIONS, `${JSON.stringify({ type: 'exchange', timestamp: daysAgo(400) })}\n`);
+  writeFileSync(
+    CONVERSATIONS,
+    `${JSON.stringify({ type: 'exchange', timestamp: daysAgo(400) })}\n`
+  );
   writeLog([row(400, 'ancient')]);
   pruneMessageLog({ days: 30, now: NOW });
   assert.equal(readFileSync(CONVERSATIONS, 'utf-8').split('\n').filter(Boolean).length, 1);
