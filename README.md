@@ -10,6 +10,8 @@ Needs Node 22.13 or newer, for its built-in SQLite. `npm start` runs the bot. Af
 any command, run `npm run deploy` so Discord knows about it. `npm test` checks the code in about
 20 seconds without Ollama or Discord.
 
+To keep her running on a Debian machine around the clock, see [HOSTING.md](HOSTING.md).
+
 ## Commands
 
 | Command | Who | What it does |

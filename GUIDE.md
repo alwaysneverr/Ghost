@@ -149,6 +149,9 @@ an hour to appear. With it, they show up in that server immediately.
 Without an index the bot still chats — it just logs a warning and replies
 without script grounding.
 
+To run her around the clock on a Debian machine, starting at boot and
+restarting after a crash, see [HOSTING.md](HOSTING.md).
+
 **She loads the models when she starts**, and the console says how long it took,
 or warns if Ollama isn't running. They then stay loaded for an hour after each
 message (`OLLAMA_KEEP_ALIVE`). Ollama's own default is 5 minutes, and loading the
