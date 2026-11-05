@@ -11,7 +11,10 @@ import { character } from '../../src/character.js';
 // Script files to read, skipping dotfiles and anything matched by
 // character.excludeScripts.
 export function listScriptFiles(dir) {
-  const files = readdirSync(dir).filter((f) => !f.startsWith('.'));
+  // Files only: a folder in there (like raw extracts kept nearby) isn't a script.
+  const files = readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && !entry.name.startsWith('.'))
+    .map((entry) => entry.name);
   const kept = files.filter((f) => !character.excludeScripts?.test(f));
   if (kept.length < files.length) {
     console.log(
