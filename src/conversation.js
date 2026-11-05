@@ -81,7 +81,23 @@ export function isSensitive(channelId, content) {
 // Returns her reply, and whether it can be rated and kept as training data: not on
 // someone's worst day. If the model fails, their message is taken back out of history
 // and the error is thrown.
-export async function converse({
+// One reply at a time per channel. Two messages answered at once both edit the same
+// history, so their replies could be stored in the wrong order. Channels don't wait on
+// each other.
+const queues = new Map();
+
+export function converse(args) {
+  const previous = queues.get(args.channelId) ?? Promise.resolve();
+  const turn = previous.then(() => replyInChannel(args));
+  const done = turn.catch(() => {}); // the next message waits either way
+  queues.set(args.channelId, done);
+  done.then(() => {
+    if (queues.get(args.channelId) === done) queues.delete(args.channelId);
+  });
+  return turn;
+}
+
+async function replyInChannel({
   channelId,
   speakerId,
   speakerName,

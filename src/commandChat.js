@@ -9,8 +9,10 @@
 import { InteractionContextType, MessageFlags } from 'discord.js';
 import { character } from './character.js';
 import { converse, isSensitive } from './conversation.js';
+import { ollamaAnswered, ollamaFailed } from './health.js';
 import { logExchange, logMessage } from './logger.js';
 import { rememberFrom } from './memory.js';
+import { OllamaError } from './ollama.js';
 import { ratingButtons } from './rating.js';
 
 const QUOTE_LENGTH = 200;
@@ -67,6 +69,7 @@ export async function answerInCommand(
       content,
       scope,
     });
+    ollamaAnswered(interaction.client);
     const sent = await interaction.editReply({
       content: (sensitive ? reply : `${quote(content, author)}\n${reply}`).slice(0, 2000),
       components: rateable ? [ratingButtons()] : [],
@@ -85,8 +88,7 @@ export async function answerInCommand(
     if (remember) rememberFrom(speakerId, scope, content);
   } catch (error) {
     console.error(`❌ Chat error in ${via}:`, error);
-    await interaction.editReply(
-      `❌ ${character.name} isn't responding — check that Ollama is running and reachable on the workstation.`
-    );
+    if (error instanceof OllamaError) ollamaFailed(interaction.client, error);
+    await interaction.editReply(character.offlineReply);
   }
 }

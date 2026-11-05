@@ -1,10 +1,14 @@
 import { Events } from 'discord.js';
 import { character } from '../character.js';
 import { cleanName, converse, isSensitive } from '../conversation.js';
+import { ollamaAnswered, ollamaFailed } from '../health.js';
 import { logExchange, logMessage, logSent } from '../logger.js';
 import { rememberFrom } from '../memory.js';
+import { OllamaError } from '../ollama.js';
 import { ratingButtons } from '../rating.js';
 import { createStreamer } from '../streamReply.js';
+
+const TYPING_EVERY_MS = 8000;
 
 // Off by default: replies are short enough to finish in about a second, and live
 // text can show a repeat before chatFresh gets the chance to replace it.
@@ -67,6 +71,9 @@ export default {
 
     const scope = message.guildId ?? 'dm';
     let streamer = null;
+    // "Typing…" lasts 10 seconds; a slow reply (a model still loading, retries, a queue
+    // behind other messages) needs it sent again until there's something to show.
+    const typing = setInterval(() => message.channel.sendTyping().catch(() => {}), TYPING_EVERY_MS);
     try {
       await message.channel.sendTyping();
 
@@ -79,8 +86,15 @@ export default {
         ),
         content,
         scope,
-        startStream: STREAM_REPLIES ? () => (streamer = createStreamer(message)) : null,
+        startStream: STREAM_REPLIES
+          ? () => {
+              clearInterval(typing);
+              return (streamer = createStreamer(message));
+            }
+          : null,
       });
+      clearInterval(typing);
+      ollamaAnswered(client);
 
       // Discord caps messages at 2000 characters. No rating buttons on someone's
       // worst day, and it stays out of the logs that become training data.
@@ -104,13 +118,13 @@ export default {
 
       rememberFrom(message.author.id, scope, content);
     } catch (error) {
+      clearInterval(typing);
       await streamer?.abort();
 
       console.error('❌ Chat error:', error);
+      if (error instanceof OllamaError) ollamaFailed(client, error);
       try {
-        await message.reply(
-          `❌ ${character.name} isn't responding — check that Ollama is running and reachable on the workstation.`
-        );
+        await message.reply(character.offlineReply);
       } catch (_error) {
         // e.g. channel deleted mid-flight — ignore
       }

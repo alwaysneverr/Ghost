@@ -10,6 +10,7 @@ export const TEST_DIR = mkdtempSync(join(tmpdir(), 'ghost-test-'));
 process.env.GHOST_DB_PATH = join(TEST_DIR, 'ghost.db');
 process.env.GHOST_LOG_DIR = join(TEST_DIR, 'logs');
 process.env.RAG_INDEX_PATH = join(TEST_DIR, 'no-index.db');
+process.env.OLLAMA_ALERTS = 'false'; // no DMs to anyone; test/stability.test.js turns them on itself
 
 globalThis.fetch = async (url) => {
   throw new Error(`No network in tests: ${url}`);

@@ -48,7 +48,8 @@ Discord message (DM or @mention)        /ask, or "Reply as Ghost" on a message
 | `src/sceneIndex.js` | SQLite: script scenes and their embeddings (`data/index.db`) |
 | `src/rerank.js` | Optional second pass over retrieved scenes (`RAG_RERANK=true`) |
 | `src/llm.js` | The one call to Ollama's chat API |
-| `src/ollama.js` | Ollama's address, how long models stay loaded, and the embedding call |
+| `src/ollama.js` | Ollama's address, how long models stay loaded, the time limit on every request, and the embedding call |
+| `src/health.js` | DMs the owner once when Ollama stops answering, and once when it's back |
 | `src/similarity.js` | Cuts sentences that repeat something she just said, in other words |
 | `src/status.js` | Gathers what `/status` reports |
 | `src/streamReply.js` | Optional live-updating replies (`STREAM_REPLIES=true`) |
@@ -114,6 +115,8 @@ OLLAMA_THINK=false                  # Qwen3 "thinking" before replies (slow; off
 OLLAMA_NUM_CTX=16384                # context window; must fit persona + references + history
 OLLAMA_MAX_REPLY_TOKENS=90          # hard limit on reply length, about 65 words
 OLLAMA_KEEP_ALIVE=1h                # how long the models stay loaded; -1 = until Ollama stops
+# OLLAMA_TIMEOUT_MS=60000          # give up on a request after this long; she says her offline line
+# OLLAMA_ALERTS=false               # don't DM the owner when Ollama stops or starts answering
 # HABIT_SIMILARITY=0.85             # how alike in meaning a sentence must be to count as a repeat; 1 = off
 # MESSAGE_LOG_DAYS=30               # delete message log entries older than this; unset = keep them all
 # REPLY_CHECK=false                 # skip asking the model whether a reply pushes self-harm (keywords only)
@@ -508,7 +511,7 @@ picture, and every later change gets compared against it.
 
 | Problem | Cause and fix |
 | --- | --- |
-| Bot says *"Ghost isn't responding"*; the console shows `fetch failed` / `ECONNREFUSED` | Ollama isn't running. Start it from the Start menu (or run `ollama serve`) and check <http://localhost:11434>. |
+| She answers with her offline line (*"my head's not working right now"*), you get a DM that Ollama stopped answering, and the console shows `can't reach Ollama` / `ECONNREFUSED` | Ollama isn't running. Start it from the Start menu (or run `ollama serve`) and check <http://localhost:11434>. |
 | `model "qwen3:8b" not found` | Step 2 was skipped, or `OLLAMA_MODEL` in `.env` has a typo. Compare it with `ollama list`. |
 | Replies take 30 seconds or more | The model is running on the CPU. Update your NVIDIA driver, close other GPU-heavy apps, then run `ollama ps` again. |
 | Ollama runs on a different PC from the bot | On the Ollama PC, set the environment variable `OLLAMA_HOST=0.0.0.0` and restart Ollama. On the bot PC, set `OLLAMA_URL=http://<that-pc-ip>:11434`. |

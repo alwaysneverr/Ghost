@@ -459,6 +459,10 @@ export const character = {
   // Sent if every try at a reply was one that can't be sent (chatFresh in src/llm.js).
   fallbackReply: 'Tch. Forget it.',
 
+  // Sent when she can't reply at all: Ollama is off, unreachable or too slow, or
+  // something broke. The owner gets the details by DM (src/health.js) and in the log.
+  offlineReply: "Nngh... my head's not working right now. Gimme a bit and try again, Nine.",
+
   // Used in fine-tuning data. The full prompt would use up most of the
   // training length limit and cut off the replies being learned from.
   trainingPrompt: [identity, style].join('\n\n'),

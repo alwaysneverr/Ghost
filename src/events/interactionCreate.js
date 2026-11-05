@@ -43,10 +43,19 @@ export default {
         content: `❌ Tch, something went wrong running /${interaction.commandName}. Don't look at me, it's probably Captain's faulty code.`,
         flags: MessageFlags.Ephemeral,
       };
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp(errorMessage);
-      } else {
-        await interaction.reply(errorMessage);
+      // Telling them can fail too, e.g. when Discord's 3 seconds to answer ran out. That
+      // mustn't escape: an unhandled rejection takes the whole bot down.
+      try {
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(errorMessage);
+        } else {
+          await interaction.reply(errorMessage);
+        }
+      } catch (replyError) {
+        console.error(
+          `❌ Couldn't tell them /${interaction.commandName} failed:`,
+          replyError.message
+        );
       }
     }
   },

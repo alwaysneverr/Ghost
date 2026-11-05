@@ -4,7 +4,7 @@
  */
 
 import { character } from './character.js';
-import { OLLAMA_KEEP_ALIVE, OLLAMA_URL } from './ollama.js';
+import { asOllamaError, OLLAMA_KEEP_ALIVE, ollamaPost, WARM_UP_TIMEOUT_MS } from './ollama.js';
 import { isHarmfulReply, SELF_HARM_CHECK, SELF_HARM_SCHEMA } from './safety.js';
 import { dropSimilarSentences } from './similarity.js';
 
@@ -277,25 +277,22 @@ async function encouragesSelfHarm(theirMessage, reply) {
 // randomness. Same num_ctx as chat(), since a different one makes Ollama reload
 // the model, which would stall the next reply.
 export async function chatJson(messages, schema, model = OLLAMA_MODEL) {
-  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      messages,
-      stream: false,
-      think: false,
-      format: schema,
-      keep_alive: OLLAMA_KEEP_ALIVE,
-      options: { temperature: 0, num_ctx: OLLAMA_NUM_CTX, num_predict: JSON_MAX_TOKENS },
-    }),
+  const response = await ollamaPost('/api/chat', {
+    model,
+    messages,
+    stream: false,
+    think: false,
+    format: schema,
+    keep_alive: OLLAMA_KEEP_ALIVE,
+    options: { temperature: 0, num_ctx: OLLAMA_NUM_CTX, num_predict: JSON_MAX_TOKENS },
   });
 
-  if (!response.ok) {
-    throw new Error(`Ollama returned HTTP ${response.status}`);
+  let data;
+  try {
+    data = await response.json();
+  } catch (error) {
+    throw asOllamaError(error);
   }
-
-  const data = await response.json();
   return JSON.parse(data.message?.content ?? '{}');
 }
 
@@ -303,47 +300,47 @@ export async function chatJson(messages, schema, model = OLLAMA_MODEL) {
 // Same context size as chat(), since a different one makes Ollama load it all over
 // again. An empty conversation only loads the model.
 export async function warmUp() {
-  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const response = await ollamaPost(
+    '/api/chat',
+    {
       model: OLLAMA_MODEL,
       messages: [],
       keep_alive: OLLAMA_KEEP_ALIVE,
       options: { num_ctx: OLLAMA_NUM_CTX },
-    }),
-  });
-  if (!response.ok) throw new Error(`Ollama returned HTTP ${response.status}`);
-  await response.json();
+    },
+    WARM_UP_TIMEOUT_MS
+  );
+  try {
+    await response.json();
+  } catch (error) {
+    throw asOllamaError(error, WARM_UP_TIMEOUT_MS);
+  }
 }
 
 // messages: [{ role: 'system' | 'user' | 'assistant', content }]
 // onToken, if given, is called with the reply so far as it's written.
 async function chat(messages, model, temperature, repeatPenalty, onToken) {
-  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      messages,
-      stream: Boolean(onToken),
-      think: OLLAMA_THINK,
-      keep_alive: OLLAMA_KEEP_ALIVE,
-      options: {
-        ...SAMPLING,
-        temperature,
-        repeat_penalty: repeatPenalty,
-        num_ctx: OLLAMA_NUM_CTX,
-        ...(OLLAMA_THINK ? {} : { num_predict: OLLAMA_MAX_REPLY_TOKENS }),
-      },
-    }),
+  const response = await ollamaPost('/api/chat', {
+    model,
+    messages,
+    stream: Boolean(onToken),
+    think: OLLAMA_THINK,
+    keep_alive: OLLAMA_KEEP_ALIVE,
+    options: {
+      ...SAMPLING,
+      temperature,
+      repeat_penalty: repeatPenalty,
+      num_ctx: OLLAMA_NUM_CTX,
+      ...(OLLAMA_THINK ? {} : { num_predict: OLLAMA_MAX_REPLY_TOKENS }),
+    },
   });
 
-  if (!response.ok) {
-    throw new Error(`Ollama returned HTTP ${response.status}`);
+  let data;
+  try {
+    data = onToken ? await readStream(response, onToken) : await response.json();
+  } catch (error) {
+    throw asOllamaError(error);
   }
-
-  const data = onToken ? await readStream(response, onToken) : await response.json();
   const reply = data.message?.content?.trim();
 
   if (!reply) throw new Error('Empty response from Ollama');

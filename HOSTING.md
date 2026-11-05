@@ -318,7 +318,9 @@ handy the first time, in case you lock yourself out.
 - Ollama on Windows starts when you **sign in**, not when the PC boots.
 - Without it, she still runs every command that doesn't need the model: `/ping`, `/remind`,
   `/reminders`, `/tell`, `/dm` and `/echo`. Reminders still arrive.
-- Chat and `/ask` answer *"Ghost isn't responding"*, and `/status` shows Ollama as unreachable.
+- Chat and `/ask` answer with her offline line (*"my head's not working right now"*), and `/status`
+  shows Ollama as unreachable. You get a DM from her when Ollama stops answering, and another when
+  it's back (`OLLAMA_ALERTS=false` turns those off).
 
 So, on Windows:
 

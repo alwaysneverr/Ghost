@@ -146,7 +146,7 @@ test('/ask: if the model fails, she says so', async () => {
   };
   const calls = await run(ask, interaction({ channelId: 'ask-down', message: 'you there?' }));
   globalThis.fetch = saved;
-  assert.match(calls.edits[0], /isn't responding/);
+  assert.equal(calls.edits[0], character.offlineReply);
 });
 
 test('memory: a group DM keeps its own, apart from her DMs and servers', () => {
