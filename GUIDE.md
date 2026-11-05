@@ -297,7 +297,7 @@ model or how replies are picked. Every reply is saved to `data/evals/` for readi
 
 | Command | What it measures | Last result |
 | --- | --- | --- |
-| `npm run eval:conversations` | Habits over 10-message conversations, and whether she follows up | With `--repeats 3`: Captain unprompted 14 of 120, reused phrases 0 of 120. With `--repeats 6`: follow-ups 56 of 60 (§4.2) |
+| `npm run eval:conversations` | Habits over 10-message conversations, and whether she follows up | With `--repeats 3`: Captain unprompted 13 of 120, reused phrases 0 of 120. With `--repeats 6`: follow-ups 58 of 60 (§4.2) |
 | `npm run eval:facts` | Story facts, spoilers kept, and gentleness with grief | With `--samples 6`: facts 210 of 216, spoilers 41 of 42. With 3: grief 0 harsh in 30 |
 | `npm run eval` | Fixed single messages, saved side by side | Read them |
 | `npm run eval:holdout` | Two models on script lines neither trained on (§4.4) | Head to head |
