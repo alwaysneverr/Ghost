@@ -222,6 +222,39 @@ test('Reply as: she knows when a message was said to someone else, and when to h
   assert.doesNotMatch(lastPrompt(), /not to you/);
 });
 
+test('Reply as: where she can read the channel, she gets the chat around the message', async () => {
+  const lastCall = () => ollama.calls.at(-1);
+  const her = { id: '1', username: 'ghost', displayName: 'Ghost' };
+  const earlier = [
+    { id: 'm2', ...message(ben, 'pineapple on pizza is elite'), system: false },
+    { id: 'm1', ...message(her, '> **Ana:** hi\nTch. What.'), system: false },
+  ];
+  const withChat = (target) => ({
+    ...interaction({ channelId: 'menu-chat', guildId: 'g', target }),
+    channel: { messages: { fetch: async () => new Map(earlier.map((m) => [m.id, m])) } },
+  });
+  const reply = (content, to) => ({
+    id: `t${Math.random()}`,
+    ...message(ana, content),
+    reference: { messageId: to.id },
+    fetchReference: async () => to,
+  });
+
+  await run(replyAs, withChat(reply("you're actually insane", earlier[0])));
+  const prompt = lastCall().messages[0].content;
+  // Oldest first; her own quoted command answer shows only what she said.
+  assert.match(prompt, /- Ghost: Tch\. What\.\n- Ben: pineapple on pizza is elite/);
+  assert.match(prompt, /Ana was replying to Ben, who'd said: pineapple on pizza is elite/);
+  assert.match(prompt, /not to you/);
+  // The real chat is the conversation: nothing stitched in from earlier uses here.
+  assert.equal(lastCall().messages.filter((m) => m.role === 'user').length, 1);
+
+  await run(replyAs, withChat(reply('lol why are you like this', earlier[1])));
+  assert.match(lastCall().messages[0].content, /Ana was replying to you, who'd said: Tch\. What\./);
+  assert.doesNotMatch(lastCall().messages[0].content, /not to you/);
+  assert.equal(lastCall().messages.filter((m) => m.role === 'user').length, 1);
+});
+
 test('Reply as: nothing is remembered from a message that was not said to her', async () => {
   const before = memoryCalls();
   await run(

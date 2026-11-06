@@ -107,8 +107,22 @@ async function replyInChannel({
   overheard = null,
 }) {
   const channel = getChannel(channelId);
-  const { history } = channel;
-  const theirMessage = { role: 'user', content, speaker: speakerName, speakerId };
+  // "Reply as" with the real chat around the message: that's the conversation, so the
+  // channel's own history (only the messages picked for her, hours apart) stays out of
+  // it. Her past replies still count, so she doesn't repeat herself.
+  const standalone = overheard?.lines?.length > 0 || Boolean(overheard?.repliedTo);
+  const history = standalone ? [] : channel.history;
+  // Said to someone else ("Reply as"): the turn itself says so. Told only in the prompt,
+  // she still took "you're actually insane", said to Ben about pizza, as aimed at her,
+  // because a user turn's "you" reads as her.
+  const aside = overheard && !overheard.toHer;
+  const to = overheard?.repliedTo && !overheard.repliedTo.hers ? overheard.repliedTo.speaker : null;
+  const theirMessage = {
+    role: 'user',
+    content: aside ? `(${speakerName} to ${to ?? 'the others'}, not to you) ${content}` : content,
+    speaker: speakerName,
+    speakerId,
+  };
   history.push(theirMessage);
   trimHistory(history);
 

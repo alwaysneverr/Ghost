@@ -316,17 +316,26 @@ export async function buildSystemPrompt(
           '\n'
         )}\nYou're answering ${group.speaker} now. When ${group.speaker} says "I" or "my", that means ${group.speaker} and nobody else.`
     : '';
-  const speaker = group?.speaker ?? 'Nine';
+  const speaker = group?.speaker ?? overheard?.speaker ?? 'Nine';
+  // "Reply as" where she can read the channel: the conversation the message was part of.
+  const chatBlock = overheard?.lines?.length
+    ? `\n\nThe chat just before this, oldest first. You call all of them Nine, and only Kakeru is Captain. You weren't part of it unless it says ${character.name}:\n${overheard.lines
+        .map((line) => `- ${line.speaker}: ${line.content}`)
+        .join('\n')}`
+    : '';
+  const replyBlock = overheard?.repliedTo
+    ? `\n\n${speaker} was replying to ${overheard.repliedTo.hers ? 'you' : overheard.repliedTo.speaker}, who'd said: ${overheard.repliedTo.content}`
+    : '';
   // "Reply as": someone picked a message from a chat for her to answer, and it was
   // probably said to someone else. Told it was said to her, she answered a friend's
   // "nope, I'm cooked" as if it were about her, and took "you're insane" as an insult.
   const said =
     overheard && !overheard.toHer
-      ? `${speaker} just said this in the chat, to the others there, not to you. You're butting in with your own two cents, so react to it; don't answer it as if they'd said it to you. If you can't tell what they're on about, say so instead of guessing: ${content}`
+      ? `${speaker} just said this in the chat, to the others there, not to you. You're butting in with your own two cents, so react to it; don't answer it as if they'd said it to you${overheard.lines?.length ? '' : " If you can't tell what they're on about, say so instead of guessing."}: ${content}`
       : `${speaker} just said: ${content}`;
 
   return {
-    prompt: `${character.systemPrompt}${rememberedBlock}${earlierBlock}${referenceBlock}\n\n${character.validation}${factBlock}${groupBlock}\n\n${said}${hint}`,
+    prompt: `${character.systemPrompt}${rememberedBlock}${earlierBlock}${referenceBlock}\n\n${character.validation}${factBlock}${groupBlock}${chatBlock}${replyBlock}\n\n${said}${hint}`,
     factual: factBlock !== '',
     scripted: Boolean(situation),
   };
