@@ -200,6 +200,28 @@ test("Reply as: answers someone else's message, quoting it with their name", asy
   );
 });
 
+test('Reply as: she knows when a message was said to someone else, and when to her', async () => {
+  const lastPrompt = () => ollama.calls.at(-1).messages[0].content;
+  await run(
+    replyAs,
+    interaction({ channelId: 'menu-aside', target: message(ben, "nope, I'm cooked lol") })
+  );
+  assert.match(lastPrompt(), /said this in the chat, to the others there, not to you/);
+
+  await run(
+    replyAs,
+    interaction({ channelId: 'menu-named', target: message(ben, 'ghost, settle this') })
+  );
+  assert.doesNotMatch(lastPrompt(), /not to you/);
+
+  const mention = {
+    ...message(ben, '<@1> horror or comedy?'),
+    mentions: { users: new Map([['1', {}]]) },
+  };
+  await run(replyAs, interaction({ channelId: 'menu-mention', target: mention }));
+  assert.doesNotMatch(lastPrompt(), /not to you/);
+});
+
 test('Reply as: nothing is remembered from a message that was not said to her', async () => {
   const before = memoryCalls();
   await run(

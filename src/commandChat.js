@@ -36,11 +36,12 @@ function quote(content, author = null) {
 
 // speaker is who she's answering: whoever used /ask, or whoever wrote the message.
 // remember is whether facts may be kept from it, so never from someone else's message.
+// overheard is set by "Reply as": whether the message was said to her (see buildSystemPrompt).
 // Grief and crisis get a reply only the person using the command sees, with nothing
 // quoted, so their worst day isn't put in front of a group chat.
 export async function answerInCommand(
   interaction,
-  { content, speakerId, speakerName, author = null, remember, via }
+  { content, speakerId, speakerName, author = null, remember, via, overheard = null }
 ) {
   const channelId = interaction.channelId;
   const sensitive = isSensitive(channelId, content);
@@ -68,6 +69,7 @@ export async function answerInCommand(
       speakerName,
       content,
       scope,
+      overheard,
     });
     ollamaAnswered(interaction.client);
     const sent = await interaction.editReply({

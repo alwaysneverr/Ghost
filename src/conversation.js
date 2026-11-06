@@ -104,6 +104,7 @@ async function replyInChannel({
   content,
   scope,
   startStream = null,
+  overheard = null,
 }) {
   const channel = getChannel(channelId);
   const { history } = channel;
@@ -152,7 +153,8 @@ async function replyInChannel({
                 .slice(-MAX_GROUP_LINES),
             }
           : null,
-        isGroup ? [] : earlier
+        isGroup ? [] : earlier,
+        overheard
       );
       // Nothing half-written on someone's worst day.
       const streamer = gentle ? null : startStream?.();

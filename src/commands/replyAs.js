@@ -10,6 +10,13 @@ import { answerInCommand } from '../commandChat.js';
 import { cleanName } from '../conversation.js';
 
 const NAME = `Reply as ${character.name}`;
+const HER_NAME = new RegExp(`\\b(?:${character.aliases.join('|')})\\b`, 'i');
+
+// Most messages picked for her were said to someone else in the chat; she's butting in.
+// It's to her if it @mentions her or uses her name ("ghost, settle this").
+function saidToHer(target, botId) {
+  return Boolean(target.mentions?.users?.has(botId)) || HER_NAME.test(target.content);
+}
 
 export default {
   // Right-click (or long-press) a message, then Apps. She answers that message, as a
@@ -35,9 +42,8 @@ export default {
       await refuse(`I'm not answerin' myself, Nine.`);
       return;
     }
-    const content = target.content
-      .replace(new RegExp(`<@!?${interaction.client.user.id}>`, 'g'), '')
-      .trim();
+    const botId = interaction.client.user.id;
+    const content = target.content.replace(new RegExp(`<@!?${botId}>`, 'g'), '').trim();
     if (!content) {
       await refuse(`There's nothin' there I can read, Nine.`);
       return;
@@ -55,6 +61,7 @@ export default {
       // They didn't say it to her, so nothing about them is kept from it.
       remember: false,
       via: NAME,
+      overheard: { toHer: saidToHer(target, botId) },
     });
   },
 };
