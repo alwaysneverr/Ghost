@@ -176,8 +176,12 @@ card.
 - **Chat by command:** `/ask <message>` says something to her. On any message, the
   Apps menu (right-click, or long-press on a phone) has **Reply as Ghost**, which has
   her answer that message. Both reply where everyone can see, quoting what she's
-  answering, and both work where chat can't, like group DMs. She only knows what
-  reaches her this way, not the rest of the conversation around it. Grief and crisis
+  answering, and both work where chat can't, like group DMs. With `/ask` she only
+  knows what reaches her this way. Reply as Ghost knows the message was probably said
+  to someone else (unless it @mentions her, uses her name, or replies to her), so she
+  butts in rather than answering it as if it were to her. Where she can read the
+  channel, she also gets the 8 messages before it and the one it replies to; in group
+  DMs and user installs Discord only gives her the one message. Grief and crisis
   get a reply only the person using the command can see, with nothing quoted. Reply as
   Ghost never keeps facts about the person who wrote the message, since they didn't
   say it to her. In a group DM, what people tell her through `/ask` stays with that
