@@ -49,7 +49,7 @@ Discord message (DM or @mention)        /ask, or "Reply as Ghost" on a message
 | `src/rerank.js` | Optional second pass over retrieved scenes (`RAG_RERANK=true`) |
 | `src/llm.js` | The one call to Ollama's chat API |
 | `src/ollama.js` | Ollama's address, how long models stay loaded, the time limit on every request, and the embedding call |
-| `src/health.js` | DMs the owner once when Ollama stops answering, and once when it's back |
+| `src/health.js` | DMs the owner and team admins once when Ollama stops answering, and once when it's back |
 | `src/similarity.js` | Cuts sentences that repeat something she just said, in other words |
 | `src/status.js` | Gathers what `/status` reports |
 | `src/streamReply.js` | Optional live-updating replies (`STREAM_REPLIES=true`) |
@@ -116,7 +116,7 @@ OLLAMA_NUM_CTX=16384                # context window; must fit persona + referen
 OLLAMA_MAX_REPLY_TOKENS=90          # hard limit on reply length, about 65 words
 OLLAMA_KEEP_ALIVE=1h                # how long the models stay loaded; -1 = until Ollama stops
 # OLLAMA_TIMEOUT_MS=60000          # give up on a request after this long; she says her offline line
-# OLLAMA_ALERTS=false               # don't DM the owner when Ollama stops or starts answering
+# OLLAMA_ALERTS=false               # don't DM the owner and team admins about Ollama outages
 # HABIT_SIMILARITY=0.85             # how alike in meaning a sentence must be to count as a repeat; 1 = off
 # MESSAGE_LOG_DAYS=30               # delete message log entries older than this; unset = keep them all
 # REPLY_CHECK=false                 # skip asking the model whether a reply pushes self-harm (keywords only)

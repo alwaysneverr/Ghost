@@ -460,7 +460,7 @@ export const character = {
   fallbackReply: 'Tch. Forget it.',
 
   // Sent when she can't reply at all: Ollama is off, unreachable or too slow, or
-  // something broke. The owner gets the details by DM (src/health.js) and in the log.
+  // something broke. The owner and team admins get the details by DM (src/health.js) and in the log.
   offlineReply: "Nngh... my head's not working right now. Gimme a bit and try again, Nine.",
 
   // Used in fine-tuning data. The full prompt would use up most of the

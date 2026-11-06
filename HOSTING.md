@@ -319,8 +319,8 @@ handy the first time, in case you lock yourself out.
 - Without it, she still runs every command that doesn't need the model: `/ping`, `/remind`,
   `/reminders`, `/tell`, `/dm` and `/echo`. Reminders still arrive.
 - Chat and `/ask` answer with her offline line (*"my head's not working right now"*), and `/status`
-  shows Ollama as unreachable. You get a DM from her when Ollama stops answering, and another when
-  it's back (`OLLAMA_ALERTS=false` turns those off).
+  shows Ollama as unreachable. You, and any team admins, get a DM from her when Ollama stops
+  answering, and another when it's back (`OLLAMA_ALERTS=false` turns those off).
 
 So, on Windows:
 

@@ -11,6 +11,7 @@ import interactionCreate from '../src/events/interactionCreate.js';
 import { ollamaAnswered, ollamaFailed } from '../src/health.js';
 import { OllamaError, ollamaPost } from '../src/ollama.js';
 import { listScriptFiles } from '../scripts/lib/script-parser.js';
+import { Client, Team } from 'discord.js';
 
 async function failure(promise) {
   try {
@@ -73,6 +74,55 @@ test('health: the owner hears once when Ollama goes, and once when it is back', 
   assert.equal(dms.length, 2);
   assert.match(dms[0], /stopped answering \(no answer in 60s\)/);
   assert.match(dms[1], /answering again/);
+});
+
+test("health: a team's owner and accepted admins all hear, and nobody else", async () => {
+  const discord = new Client({ intents: [] });
+  const member = (id, role, membership_state) => ({
+    role,
+    membership_state,
+    team_id: '9',
+    permissions: ['*'],
+    user: { id, username: `u${id}`, discriminator: '0', avatar: null },
+  });
+  // 100 owns it, 101 is an admin, 102 an admin still invited, 103 a developer.
+  const team = new Team(discord, {
+    id: '9',
+    name: 't',
+    icon: null,
+    owner_user_id: '100',
+    members: [
+      member('100', 'admin', 2),
+      member('101', 'admin', 2),
+      member('102', 'admin', 1),
+      member('103', 'developer', 2),
+    ],
+  });
+  const dmed = [];
+  const client = {
+    application: { fetch: async () => ({ owner: team }) },
+    users: {
+      fetch: async (id) => ({
+        send: async () => {
+          if (id === '101') throw new Error('Cannot send messages to this user');
+          dmed.push(id);
+        },
+      }),
+    },
+  };
+  process.env.OLLAMA_ALERTS = 'true';
+  let lines, outageTo;
+  try {
+    ({ lines } = await quietly(() => ollamaFailed(client, new OllamaError('no answer in 60s'))));
+    outageTo = [...dmed]; // the "back" DM below goes to the same people
+    await quietly(() => ollamaAnswered(client));
+  } finally {
+    process.env.OLLAMA_ALERTS = 'false';
+  }
+  // 101 has DMs closed: the owner still hears, and the failure is only logged.
+  assert.deepEqual(outageTo, ['100']);
+  assert.ok(lines.some((line) => line.includes('Could not DM 101')));
+  discord.destroy();
 });
 
 test('converse: two messages at once in a channel are answered in order', async () => {
